@@ -25,7 +25,8 @@ EXTRA_DIST = \
     small-integration-test.sh \
     mergedir.sh \
     sample_delcache.sh \
-    sample_ahbe.conf
+    sample_ahbe.conf \
+    pjdfstest.sh
 
 testdir = test
 
@@ -36,11 +37,17 @@ noinst_PROGRAMS = \
 junk_data_SOURCES = junk_data.c
 write_multiblock_SOURCES = write_multiblock.cc
 
+.PHONY: pjdfstest-setup pjdfstest-test
+
+pjdfstest-setup:
+	./pjdfstest.sh setup
+
+pjdfstest-test:
+	./pjdfstest.sh test
+
 #
 # Local variables:
 # tab-width: 4
 # c-basic-offset: 4
 # End:
-# vim600: expandtab sw=4 ts=4 fdm=marker
-# vim<600: expandtab sw=4 ts=4
 #

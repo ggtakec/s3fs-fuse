@@ -80,6 +80,7 @@ test/chaos-http-proxy-*
 test/junk_data
 test/s3proxy-*
 test/write_multiblock
+test/pjdfstest
 
 #
 # Windows ports

@@ -112,6 +112,14 @@ jobs:
         run: |
           make ALL_TESTS=1 check -C test || (test/filter-suite-log.sh test/test-suite.log; exit 1)
 
+      - name: Setup pjdfstest
+        run: |
+          cd test; make pjdfstest-setup
+
+      - name: Test pjdfstest
+        run: |
+          cd test; make pjdfstest-test
+
   # [NOTE]
   # A case of "runs-on: macos-11.0" does not work,
   # because load_osxfuse returns exit code = 1.
@@ -169,6 +177,14 @@ jobs:
           echo "user_allow_other" | sudo tee -a /etc/fuse.conf >/dev/null
           if [ -f /Library/Filesystems/osxfusefs.fs/Support/load_osxfusefs ]; then /Library/Filesystems/osxfusefs.fs/Support/load_osxfusefs; elif [ -f /Library/Filesystems/osxfuse.fs/Contents/Resources/load_osxfuse ]; then /Library/Filesystems/osxfuse.fs/Contents/Resources/load_osxfuse; else exit 1; fi
           make ALL_TESTS=1 check -C test || (test/filter-suite-log.sh test/test-suite.log; exit 1)
+
+      - name: Setup pjdfstest
+        run: |
+          cd test; make pjdfstest-setup
+
+      - name: Test pjdfstest
+        run: |
+          cd test; make pjdfstest-test
 
 #
 # Local variables:

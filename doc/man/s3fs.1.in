@@ -341,6 +341,14 @@ S3fs uses only the first schema "dir/" to create S3 objects for directories.
 The support for these different naming schemas causes an increased communication effort.
 .RE
 .TP
+\fB\-o\fR strict_dir_empty (strictly checking directory empty)
+.RS
+This option is strictly checking a directory is empty. With this option, check not only the number of objects in the list bucket, but also the existence of the objects. This can filter out objects that are listed but do not exist.
+.TP
+Specifying this option with the compat_dir option is not recommended.
+This option is mainly used to support MinIO versioning buckets.
+.RE
+.TP
 \fB\-o\fR use_wtf8 - support arbitrary file system encoding.
 S3 requires all object names to be valid UTF-8. But some
 clients, notably Windows NFS clients, use their own encoding.

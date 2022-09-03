@@ -93,6 +93,7 @@ static int64_t singlepart_copy_limit = 512 * 1024 * 1024;
 static bool is_specified_endpoint = false;
 static int s3fs_init_deferred_exit_status = 0;
 static bool support_compat_dir    = false;// default does not support compatibility directory type
+static bool strict_dir_empty      = false;
 static int max_keys_list_object   = 1000;// default is 1000
 static off_t max_dirty_data       = 5LL * 1024LL * 1024LL * 1024LL;
 static bool use_wtf8              = false;
@@ -1036,17 +1037,50 @@ static int s3fs_unlink(const char* _path)
     return result;
 }
 
+// [NOTE]
+// This function has a prototype of fuse_fill_dir_t.
+// This function is called by the directory_empty function when
+// strict_dir_empty is true.
+// This mimics the libfuse's fill_dir function, but this only
+// counts the number of times it is called and sets it in buf.
+// It counts the number of objects whose existence is confirmed
+// by the list_bucket and readdir_multi_head functions.
+// This is almost for MinIO versioned buckets.
+//
+static int object_counting_filler(void* buf, const char* name, const struct stat* stbuf, off_t off)
+{
+    if(!buf || !name || !stbuf || 0 != off){
+        return 1;
+    }
+    unsigned int* pcounter = reinterpret_cast<unsigned int*>(buf);
+    ++(*pcounter);
+
+    return 0;
+}
+
 static int directory_empty(const char* path)
 {
     int result;
     S3ObjList head;
 
-    if((result = list_bucket(path, head, "/", true)) != 0){
+    if((result = list_bucket(path, head, "/", (strict_dir_empty ? false : true))) != 0){
         S3FS_PRN_ERR("list_bucket returns error.");
         return result;
     }
-    if(!head.IsEmpty()){
-        return -ENOTEMPTY;
+
+    if(strict_dir_empty){
+        unsigned int object_count = 0;
+        if(0 != (result = readdir_multi_head(path, head, &object_count, object_counting_filler))){
+            S3FS_PRN_ERR("readdir_multi_head returns error(%d).", result);
+            return result;
+        }
+        if(0 < object_count){
+            return -ENOTEMPTY;
+        }
+    }else{
+        if(!head.IsEmpty()){
+            return -ENOTEMPTY;
+        }
     }
     return 0;
 }
@@ -4391,6 +4425,10 @@ static int my_fuse_opt_proc(void* data, const char* arg, int key, struct fuse_ar
             support_compat_dir = true;
             return 0;
         }
+        if(0 == strcmp(arg, "strict_dir_empty")){
+            strict_dir_empty = true;
+            return 0;
+        }
         if(0 == strcmp(arg, "enable_content_md5")){
             S3fsCurl::SetContentMd5(true);
             return 0;
@@ -4896,6 +4934,11 @@ int main(int argc, char* argv[])
     if(nomultipart || nocopyapi || norenameapi){
         FdEntity::SetNoMixMultipart();
         max_dirty_data = -1;
+    }
+
+    // check compat_dir and strict_dir_empty option combination
+    if(strict_dir_empty && support_compat_dir){
+        S3FS_PRN_WARN("Specifying the strict_dir_empty and compat_dir options together is not recommended.");
     }
 
     if(!ThreadPoolMan::Initialize(max_thread_count)){

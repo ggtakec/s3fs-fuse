@@ -3384,7 +3384,20 @@ int S3fsCurl::HeadRequest(const char* tpath, headers_t& meta)
     S3FS_PRN_INFO3("[tpath=%s]", SAFESTRPTR(tpath));
 
     // At first, try to get without SSE-C headers
-    if(!PreHeadRequest(tpath) || !fpLazySetup || !fpLazySetup(this) || 0 != (result = RequestPerform())){
+    bool isError = false;
+    if(!PreHeadRequest(tpath)){
+        isError = true;
+    }
+    if(!isError && !fpLazySetup){
+        isError = true;
+    }
+    if(!isError && !fpLazySetup(this)){
+        isError = true;
+    }
+    if(!isError && 0 != (result = RequestPerform()){
+        isError = true;
+    }
+    if(isError){
         // If has SSE-C keys, try to get with all SSE-C keys.
         for(size_t pos = 0; pos < S3fsCurl::sseckeys.size(); pos++){
             if(!DestroyCurlHandle()){

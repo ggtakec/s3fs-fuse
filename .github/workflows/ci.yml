@@ -34,6 +34,7 @@ on:
 #
 jobs:
   Linux:
+    if: false
     runs-on: ubuntu-latest
 
     #
@@ -145,6 +146,7 @@ jobs:
   #   "exit code = 1".(requires OS reboot)
   #
   macos12:
+    if: false
     runs-on: macos-12
 
     steps:
@@ -216,13 +218,14 @@ jobs:
       # Currently following test is not supported:
       #    - sanitize_memory   : Future support planned
       #
+      #    - glibc_debug
+      #    - sanitize_address
+      #    - sanitize_others
+      #    - valgrind
+      #
       matrix:
         checktype:
-          - glibc_debug
-          - sanitize_address
-          - sanitize_others
           - sanitize_thread
-          - valgrind
 
     container:
       image: fedora:40

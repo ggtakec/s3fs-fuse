@@ -3394,7 +3394,7 @@ int S3fsCurl::HeadRequest(const char* tpath, headers_t& meta)
     if(!isError && !fpLazySetup(this)){
         isError = true;
     }
-    if(!isError && 0 != (result = RequestPerform()){
+    if(!isError && 0 != (result = RequestPerform())){
         isError = true;
     }
     if(isError){

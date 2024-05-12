@@ -746,12 +746,12 @@ void FdManager::Rename(const std::string &from, const std::string &to)
 
 bool FdManager::Close(FdEntity* ent, int fd)
 {
-    S3FS_PRN_DBG("[ent->file=%s][pseudo_fd=%d]", ent ? ent->GetPath().c_str() : "", fd);
-
     if(!ent || -1 == fd){
         return true;  // returns success
     }
     AutoLock auto_lock(&FdManager::fd_manager_lock);
+
+    S3FS_PRN_DBG("[ent->file=%s][pseudo_fd=%d]", ent->GetPath().c_str(), fd);
 
     for(fdent_map_t::iterator iter = fent.begin(); iter != fent.end(); ++iter){
         if(iter->second.get() == ent){

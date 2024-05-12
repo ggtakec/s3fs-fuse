@@ -751,10 +751,9 @@ bool FdManager::Close(FdEntity* ent, int fd)
     }
     AutoLock auto_lock(&FdManager::fd_manager_lock);
 
-    S3FS_PRN_DBG("[ent->file=%s][pseudo_fd=%d]", ent->GetPath().c_str(), fd);
-
     for(fdent_map_t::iterator iter = fent.begin(); iter != fent.end(); ++iter){
         if(iter->second.get() == ent){
+            S3FS_PRN_DBG("[ent->file=%s][pseudo_fd=%d]", ent->GetPath().c_str(), fd);
             ent->Close(fd);
             if(!ent->IsOpen()){
                 // remove found entity from map.

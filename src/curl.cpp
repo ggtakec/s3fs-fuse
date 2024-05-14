@@ -349,10 +349,14 @@ bool S3fsCurl::DestroyShareCurl()
 
 void S3fsCurl::LockCurlShare(CURL* handle, curl_lock_data nLockData, curl_lock_access laccess, void* useptr)
 {
+    S3FS_PRN_INFO("########## %p, %d", handle, nLockData);
+
     if(!hCurlShare){
+        S3FS_PRN_ERR("##### Error POS 1");
         return;
     }
     if(nLockData < 0 || (sizeof(callback_locks) / sizeof(pthread_mutex_t)) <= nLockData){
+        S3FS_PRN_ERR("##### Error POS 2");
         return;
     }
 
@@ -389,10 +393,14 @@ void S3fsCurl::LockCurlShare(CURL* handle, curl_lock_data nLockData, curl_lock_a
 
 void S3fsCurl::UnlockCurlShare(CURL* handle, curl_lock_data nLockData, void* useptr)
 {
+    S3FS_PRN_INFO("########## %p, %d", handle, nLockData);
+
     if(!hCurlShare){
+        S3FS_PRN_ERR("##### Error POS 1");
         return;
     }
     if(nLockData < 0 || (sizeof(callback_locks) / sizeof(pthread_mutex_t)) <= nLockData){
+        S3FS_PRN_ERR("##### Error POS 2");
         return;
     }
 
@@ -660,6 +668,10 @@ bool S3fsCurl::LocateBundle()
 
 size_t S3fsCurl::WriteMemoryCallback(void* ptr, size_t blockSize, size_t numBlocks, void* data)
 {
+//TEST
+    S3FS_PRN_INFO("########## %p, %zd, %zd", ptr, blockSize, numBlocks);
+//TEST
+
     std::string* body  = static_cast<std::string*>(data);
     body->append(static_cast<const char*>(ptr), blockSize * numBlocks);
     return (blockSize * numBlocks);
@@ -3446,6 +3458,7 @@ int S3fsCurl::HeadRequest(const char* tpath, headers_t& meta)
     S3FS_PRN_INFO3("[tpath=%s]", SAFESTRPTR(tpath));
 
     // At first, try to get without SSE-C headers
+//TEST
     bool isError = false;
     if(!PreHeadRequest(tpath)){
         isError = true;
@@ -3460,6 +3473,7 @@ int S3fsCurl::HeadRequest(const char* tpath, headers_t& meta)
         isError = true;
     }
     if(isError){
+//TEST
         // If has SSE-C keys, try to get with all SSE-C keys.
         for(size_t pos = 0; pos < S3fsCurl::sseckeys.size(); pos++){
             if(!DestroyCurlHandle()){

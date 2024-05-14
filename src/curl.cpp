@@ -87,9 +87,6 @@ constexpr char   S3fsCurl::S3FS_SSL_PRIVKEY_PASSWORD[];
 pthread_mutex_t  S3fsCurl::curl_warnings_lock;
 pthread_mutex_t  S3fsCurl::curl_handles_lock;
 //TEST
-pthread_mutex_t  S3fsCurl::test_lock;
-//TEST
-//TEST
 //S3fsCurl::callback_locks_t S3fsCurl::callback_locks;
 pthread_mutex_t  S3fsCurl::callback_locks[CURL_LOCK_DATA_LAST];
 //TEST
@@ -162,11 +159,6 @@ bool S3fsCurl::InitS3fsCurl()
         return false;
     }
 //TEST
-    if(0 != pthread_mutex_init(&S3fsCurl::test_lock, &attr)){
-        return false;
-    }
-//TEST
-//TEST
 //    if(0 != pthread_mutex_init(&S3fsCurl::callback_locks.dns, &attr)){
 //        return false;
 //    }
@@ -232,11 +224,6 @@ bool S3fsCurl::DestroyS3fsCurl()
         if(0 != pthread_mutex_destroy(&(S3fsCurl::callback_locks[lock_pos]))){
             return false;
         }
-    }
-//TEST
-//TEST
-    if(0 != pthread_mutex_destroy(&S3fsCurl::test_lock)){
-        result = false;
     }
 //TEST
     if(0 != pthread_mutex_destroy(&S3fsCurl::curl_handles_lock)){
@@ -2678,16 +2665,6 @@ bool S3fsCurl::RemakeHandle()
 //
 int S3fsCurl::RequestPerform(bool dontAddAuthHeaders /*=false*/)
 {
-//TEST
-    int my_counter;
-    {
-        AutoLock   lock(&S3fsCurl::test_lock);
-
-        static int common_counter = 0;
-        my_counter = ++common_counter;
-    }
-//TEST
-
     if(S3fsLog::IsS3fsLogDbg()){
         char* ptr_url = nullptr;
         curl_easy_getinfo(hCurl, CURLINFO_EFFECTIVE_URL , &ptr_url);
@@ -2708,41 +2685,23 @@ int S3fsCurl::RequestPerform(bool dontAddAuthHeaders /*=false*/)
              insertAuthHeaders();
         }
 
-//TEST
-        S3FS_PRN_DBG("++++++++ START : BEFORE SETOPT : PASS (%d)", my_counter);
-//TEST
         if(CURLE_OK != curl_easy_setopt(hCurl, CURLOPT_HTTPHEADER, requestHeaders)){
             return false;
         }
-//TEST
-        S3FS_PRN_DBG("++++++++ END   : AFTER  SETOPT : PASS (%d)", my_counter);
-//TEST
 
         // Requests
-//TEST
-        S3FS_PRN_DBG("++++++++ START : BEFORE REFORM : PASS (%d)", my_counter);
-//TEST
         curlCode = curl_easy_perform(hCurl);
-//TEST
-        S3FS_PRN_DBG("++++++++ END   : AFTER  REFORM : PASS (%d)", my_counter);
-//TEST
 
         // Check result
         switch(curlCode){
             case CURLE_OK:
                 // Need to look at the HTTP response code
-//TEST
-        S3FS_PRN_DBG("++++++++ START : BEFORE GETINFO : PASS (%d)", my_counter);
-//TEST
                 if(0 != curl_easy_getinfo(hCurl, CURLINFO_RESPONSE_CODE, &responseCode)){
                     S3FS_PRN_ERR("curl_easy_getinfo failed while trying to retrieve HTTP response code");
                     responseCode = S3FSCURL_RESPONSECODE_FATAL_ERROR;
                     result       = -EIO;
                     break;
                 }
-//TEST
-        S3FS_PRN_DBG("++++++++ END   : AFTER  GETINFO : PASS (%d)", my_counter);
-//TEST
                 if(responseCode >= 200 && responseCode < 300){
                     S3FS_PRN_INFO3("HTTP response code %ld", responseCode);
                     result = 0;

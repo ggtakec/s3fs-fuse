@@ -118,6 +118,9 @@ class S3fsCurl
         static bool             curl_warnings_once;  // emit older curl warnings only once
         static pthread_mutex_t  curl_handles_lock;
 //TEST
+        static pthread_mutex_t  test_lock;
+//TEST
+//TEST
 //        static struct callback_locks_t {
 //            pthread_mutex_t dns;
 //            pthread_mutex_t ssl_session;

@@ -117,10 +117,14 @@ class S3fsCurl
         static pthread_mutex_t  curl_warnings_lock;
         static bool             curl_warnings_once;  // emit older curl warnings only once
         static pthread_mutex_t  curl_handles_lock;
-        static struct callback_locks_t {
-            pthread_mutex_t dns;
-            pthread_mutex_t ssl_session;
-        } callback_locks;
+//TEST
+//        static struct callback_locks_t {
+//            pthread_mutex_t dns;
+//            pthread_mutex_t ssl_session;
+//        } callback_locks;
+
+        static pthread_mutex_t callback_locks[CURL_LOCK_DATA_LAST];
+//TEST
         static bool             is_initglobal_done;
         static CurlHandlerPool* sCurlPool;
         static int              sCurlPoolSize;

@@ -301,13 +301,13 @@ bool S3fsCurl::InitShareCurl()
         }
     }
 //TEST
-    nSHCode = curl_share_setopt(S3fsCurl::hCurlShare, CURLSHOPT_SHARE, CURL_LOCK_DATA_CONNECT);
-    if(CURLSHE_OK != nSHCode && CURLSHE_BAD_OPTION != nSHCode && CURLSHE_NOT_BUILT_IN != nSHCode){
-        S3FS_PRN_ERR("curl_share_setopt(SSL SESSION) returns %d(%s)", nSHCode, curl_share_strerror(nSHCode));
-        return false;
-    }else if(CURLSHE_BAD_OPTION == nSHCode || CURLSHE_NOT_BUILT_IN == nSHCode){
-        S3FS_PRN_WARN("curl_share_setopt(SSL SESSION) returns %d(%s), but continue without shared ssl session data.", nSHCode, curl_share_strerror(nSHCode));
-    }
+//    nSHCode = curl_share_setopt(S3fsCurl::hCurlShare, CURLSHOPT_SHARE, CURL_LOCK_DATA_CONNECT);
+//    if(CURLSHE_OK != nSHCode && CURLSHE_BAD_OPTION != nSHCode && CURLSHE_NOT_BUILT_IN != nSHCode){
+//        S3FS_PRN_ERR("curl_share_setopt(CURL_LOCK_DATA_CONNECT) returns %d(%s)", nSHCode, curl_share_strerror(nSHCode));
+//        return false;
+//    }else if(CURLSHE_BAD_OPTION == nSHCode || CURLSHE_NOT_BUILT_IN == nSHCode){
+//        S3FS_PRN_WARN("curl_share_setopt(CURL_LOCK_DATA_CONNECT) returns %d(%s), but continue without shared ssl session data.", nSHCode, curl_share_strerror(nSHCode));
+//    }
 //TEST
 //TEST
 //    if(CURLSHE_OK != (nSHCode = curl_share_setopt(S3fsCurl::hCurlShare, CURLSHOPT_USERDATA, &S3fsCurl::callback_locks))){
@@ -2665,6 +2665,11 @@ bool S3fsCurl::RemakeHandle()
 //
 int S3fsCurl::RequestPerform(bool dontAddAuthHeaders /*=false*/)
 {
+//TEST
+    static int common_counter = 0;
+    int        my_counter = ++common_counter;
+//TEST
+
     if(S3fsLog::IsS3fsLogDbg()){
         char* ptr_url = nullptr;
         curl_easy_getinfo(hCurl, CURLINFO_EFFECTIVE_URL , &ptr_url);
@@ -2685,23 +2690,41 @@ int S3fsCurl::RequestPerform(bool dontAddAuthHeaders /*=false*/)
              insertAuthHeaders();
         }
 
+//TEST
+        S3FS_PRN_DBG("++++++++ START : BEFORE SETOPT : PASS (%d)", my_counter);
+//TEST
         if(CURLE_OK != curl_easy_setopt(hCurl, CURLOPT_HTTPHEADER, requestHeaders)){
             return false;
         }
+//TEST
+        S3FS_PRN_DBG("++++++++ END   : AFTER  SETOPT : PASS (%d)", my_counter);
+//TEST
 
         // Requests
+//TEST
+        S3FS_PRN_DBG("++++++++ START : BEFORE REFORM : PASS (%d)", my_counter);
+//TEST
         curlCode = curl_easy_perform(hCurl);
+//TEST
+        S3FS_PRN_DBG("++++++++ END   : AFTER  REFORM : PASS (%d)", my_counter);
+//TEST
 
         // Check result
         switch(curlCode){
             case CURLE_OK:
                 // Need to look at the HTTP response code
+//TEST
+        S3FS_PRN_DBG("++++++++ START : BEFORE GETINFO : PASS (%d)", my_counter);
+//TEST
                 if(0 != curl_easy_getinfo(hCurl, CURLINFO_RESPONSE_CODE, &responseCode)){
                     S3FS_PRN_ERR("curl_easy_getinfo failed while trying to retrieve HTTP response code");
                     responseCode = S3FSCURL_RESPONSECODE_FATAL_ERROR;
                     result       = -EIO;
                     break;
                 }
+//TEST
+        S3FS_PRN_DBG("++++++++ END   : AFTER  GETINFO : PASS (%d)", my_counter);
+//TEST
                 if(responseCode >= 200 && responseCode < 300){
                     S3FS_PRN_INFO3("HTTP response code %ld", responseCode);
                     result = 0;

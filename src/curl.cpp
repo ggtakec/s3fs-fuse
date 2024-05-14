@@ -87,6 +87,9 @@ constexpr char   S3fsCurl::S3FS_SSL_PRIVKEY_PASSWORD[];
 pthread_mutex_t  S3fsCurl::curl_warnings_lock;
 pthread_mutex_t  S3fsCurl::curl_handles_lock;
 //TEST
+pthread_mutex_t  S3fsCurl::test_lock;
+//TEST
+//TEST
 //S3fsCurl::callback_locks_t S3fsCurl::callback_locks;
 pthread_mutex_t  S3fsCurl::callback_locks[CURL_LOCK_DATA_LAST];
 //TEST
@@ -159,6 +162,11 @@ bool S3fsCurl::InitS3fsCurl()
         return false;
     }
 //TEST
+    if(0 != pthread_mutex_init(&S3fsCurl::test_lock, &attr)){
+        return false;
+    }
+//TEST
+//TEST
 //    if(0 != pthread_mutex_init(&S3fsCurl::callback_locks.dns, &attr)){
 //        return false;
 //    }
@@ -224,6 +232,11 @@ bool S3fsCurl::DestroyS3fsCurl()
         if(0 != pthread_mutex_destroy(&(S3fsCurl::callback_locks[lock_pos]))){
             return false;
         }
+    }
+//TEST
+//TEST
+    if(0 != pthread_mutex_destroy(&S3fsCurl::test_lock)){
+        result = false;
     }
 //TEST
     if(0 != pthread_mutex_destroy(&S3fsCurl::curl_handles_lock)){
@@ -2666,8 +2679,13 @@ bool S3fsCurl::RemakeHandle()
 int S3fsCurl::RequestPerform(bool dontAddAuthHeaders /*=false*/)
 {
 //TEST
-    static int common_counter = 0;
-    int        my_counter = ++common_counter;
+    int my_counter;
+    {
+        AutoLock   lock(&S3fsCurl::test_lock);
+
+        static int common_counter = 0;
+        my_counter = ++common_counter;
+    }
 //TEST
 
     if(S3fsLog::IsS3fsLogDbg()){

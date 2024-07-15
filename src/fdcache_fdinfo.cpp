@@ -93,7 +93,7 @@ void* PseudoFdInfo::MultipartUploadThreadWorker(void* arg)
     }else{
         S3FS_PRN_ERR("failed uploading with error(%d) [path=%s][start=%lld][size=%lld][part=%d]", result, pthparam->path.c_str(), static_cast<long long>(pthparam->start), static_cast<long long>(pthparam->size), pthparam->part_num);
     }
-    s3fscurl->DestroyCurlHandle(true, false);
+    s3fscurl->DestroyCurlHandle(false);
 
     // set result
     const std::lock_guard<std::mutex> lock(pthparam->ppseudofdinfo->upload_list_lock);

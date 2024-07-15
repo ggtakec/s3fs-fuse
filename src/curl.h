@@ -130,8 +130,6 @@ class S3fsCurl
             std::mutex      ssl_session;
         } callback_locks;
         static bool             is_initglobal_done;
-        static CurlHandlerPool* sCurlPool;
-        static int              sCurlPoolSize;
         static CURLSH*          hCurlShare;
         static bool             is_cert_check;
         static bool             is_dns_cache;
@@ -360,9 +358,9 @@ class S3fsCurl
         static bool SetIPResolveType(const char* value);
 
         // methods
-        bool CreateCurlHandle(bool only_pool = false, bool remake = false);
-        bool DestroyCurlHandle(bool restore_pool = true, bool clear_internal_data = true);
-        bool DestroyCurlHandleHasLock(bool restore_pool = true, bool clear_internal_data = true) REQUIRES(S3fsCurl::curl_handles_lock);
+        bool CreateCurlHandle(bool remake = false);
+        bool DestroyCurlHandle(bool clear_internal_data = true);
+        bool DestroyCurlHandleHasLock(bool clear_internal_data = true) REQUIRES(S3fsCurl::curl_handles_lock);
 
         bool GetIAMCredentials(const char* cred_url, const char* iam_v2_token, const char* ibm_secret_access_key, std::string& response);
         bool GetIAMRoleFromMetaData(const char* cred_url, const char* iam_v2_token, std::string& token);

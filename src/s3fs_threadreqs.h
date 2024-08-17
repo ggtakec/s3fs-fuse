@@ -146,6 +146,22 @@ struct abort_multipart_upload_req_thparam
     int         result = 0;
 };
 
+//
+// Multipart Put Head Request parameter structure for Thread Pool.
+//
+struct multipart_put_head_req_thparam
+{
+    std::string from;
+    std::string to;
+    std::string upload_id;
+    int         part_number   = 0;
+    headers_t   meta;
+    std::mutex* pthparam_lock = nullptr;
+    filepart*   ppartdata     = nullptr;
+    int*        pretrycount   = nullptr;
+    int*        presult       = nullptr;
+};
+
 //-------------------------------------------------------------------
 // Thread Worker functions for MultiThread Request
 //-------------------------------------------------------------------
@@ -159,6 +175,7 @@ void* check_service_req_threadworker(void* arg);
 void* pre_multipart_upload_req_threadworker(void* arg);
 void* complete_multipart_upload_threadworker(void* arg);
 void* abort_multipart_upload_req_threadworker(void* arg);
+void* multipart_put_head_req_threadworker(void* arg);
 
 //-------------------------------------------------------------------
 // Utility functions
@@ -166,6 +183,7 @@ void* abort_multipart_upload_req_threadworker(void* arg);
 int pre_multipart_upload_request(const std::string& path, const headers_t& meta, bool is_copy, std::string& upload_id);
 int complete_multipart_upload_request(const std::string& path, const std::string& upload_id, const etaglist_t& parts);
 int abort_multipart_upload_request(const std::string& path, const std::string& upload_id);
+int multipart_put_head_request(const std::string& strfrom, const std::string& strto, off_t size, const headers_t& meta);
 
 #endif // S3FS_THREADREQS_H_
 

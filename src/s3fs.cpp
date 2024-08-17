@@ -40,6 +40,7 @@
 #include "fdcache_stat.h"
 #include "curl.h"
 #include "curl_multi.h"
+#include "curl_util.h"
 #include "s3objlist.h"
 #include "cache.h"
 #include "addhead.h"
@@ -105,11 +106,6 @@ static int max_thread_count       = 5;  // default is 5
 static bool update_parent_dir_stat= false;  // default not updating parent directory stats
 static fsblkcnt_t bucket_block_count;                       // advertised block count of the bucket
 static unsigned long s3fs_block_size = 16 * 1024 * 1024;    // s3fs block size is 16MB
-
-//-------------------------------------------------------------------
-// Global functions : prototype
-//-------------------------------------------------------------------
-int put_headers(const char* path, headers_t& meta, bool is_copy, bool use_st_size = true);       // [NOTE] global function because this is called from FdEntity class
 
 //-------------------------------------------------------------------
 // Static functions : prototype
@@ -916,7 +912,7 @@ static int get_local_fent(AutoFdEntity& autoent, FdEntity **entity, const char* 
 // create or update s3 meta
 // @return fuse return code
 //
-int put_headers(const char* path, headers_t& meta, bool is_copy, bool use_st_size)
+int put_headers(const char* path, const headers_t& meta, bool is_copy, bool use_st_size)
 {
     int         result;
     off_t       size;
@@ -943,11 +939,7 @@ int put_headers(const char* path, headers_t& meta, bool is_copy, bool use_st_siz
     }
 
     if(!nocopyapi && !nomultipart && size >= multipart_threshold){
-        // [TODO]
-        // This object will be removed after removing S3fsMultiCurl
-        //
-        S3fsCurl s3fscurl(true);
-        if(0 != (result = s3fscurl.MultipartHeadRequest(strpath.c_str(), size, meta, is_copy))){
+        if(0 != (result = multipart_put_head_request(strpath, strpath, size, meta))){
             return result;
         }
     }else{
@@ -1752,14 +1744,9 @@ static int rename_large_object(const char* from, const char* to)
         return result;
     }
 
-    // [TODO]
-    // This object will be removed after removing S3fsMultiCurl
-    //
-    S3fsCurl s3fscurl(true);
-    if(0 != (result = s3fscurl.MultipartRenameRequest(from, to, meta, buf.st_size))){
+    if(0 != (result = multipart_put_head_request(std::string(from), std::string(to), buf.st_size, meta))){
         return result;
     }
-    s3fscurl.DestroyCurlHandle();
 
     // Rename cache file
     FdManager::get()->Rename(from, to);

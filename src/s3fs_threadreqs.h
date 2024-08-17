@@ -161,6 +161,22 @@ struct multipart_put_head_req_thparam
     int*        presult       = nullptr;
 };
 
+//
+// Parallel Get Object Request parameter structure for Thread Pool.
+//
+struct parallel_get_object_req_thparam
+{
+    std::string path;
+    int         fd            = -1;
+    off_t       start         = 0;
+    off_t       size          = 0;
+    sse_type_t  ssetype       = sse_type_t::SSE_DISABLE;
+    std::string ssevalue;
+    std::mutex* pthparam_lock = nullptr;
+    int*        pretrycount   = nullptr;
+    int*        presult       = nullptr;
+};
+
 //-------------------------------------------------------------------
 // Thread Worker functions for MultiThread Request
 //-------------------------------------------------------------------
@@ -175,6 +191,7 @@ void* pre_multipart_upload_req_threadworker(void* arg);
 void* complete_multipart_upload_threadworker(void* arg);
 void* abort_multipart_upload_req_threadworker(void* arg);
 void* multipart_put_head_req_threadworker(void* arg);
+void* parallel_get_object_req_threadworker(void* arg);
 
 //-------------------------------------------------------------------
 // Utility functions
@@ -183,6 +200,7 @@ int pre_multipart_upload_request(const std::string& path, const headers_t& meta,
 int complete_multipart_upload_request(const std::string& path, const std::string& upload_id, const etaglist_t& parts);
 int abort_multipart_upload_request(const std::string& path, const std::string& upload_id);
 int multipart_put_head_request(const std::string& strfrom, const std::string& strto, off_t size, const headers_t& meta);
+int parallel_get_object_request(const std::string& path, int fd, off_t start, off_t size);
 
 #endif // S3FS_THREADREQS_H_
 

@@ -100,6 +100,9 @@ class S3fsCred
 
     private:
         static bool ParseIAMRoleFromMetaDataResponse(const char* response, std::string& rolename);
+        static void* GetIAMv2ApiTokenThreadWorker(void* arg);
+        static void* GetIAMRoleFromMetaDataThreadWorker(void* arg);
+        static void* GetIAMCredentialsThreadWorker(void* arg);
 
         bool SetS3fsPasswdFile(const char* file);
         bool IsSetPasswdFile() const;
@@ -115,14 +118,24 @@ class S3fsCred
 
         bool SetIsIBMIAMAuth(bool flag);
 
-        int SetIMDSVersion(int version) REQUIRES(S3fsCred::token_lock);
+        int SetIMDSVersionHasLock(int version) REQUIRES(S3fsCred::token_lock);
+        int SetIMDSVersion(int version)
+        {
+            const std::lock_guard<std::mutex> lock(token_lock);
+            return SetIMDSVersionHasLock(version);
+        }
         int GetIMDSVersion() const REQUIRES(S3fsCred::token_lock);
 
-        bool SetIAMv2APIToken(const std::string& token) REQUIRES(S3fsCred::token_lock);
+        bool SetIAMv2APIToken(const std::string& token);
         const std::string& GetIAMv2APIToken() const REQUIRES(S3fsCred::token_lock);
 
         bool SetIAMRole(const char* role) REQUIRES(S3fsCred::token_lock);
-        const std::string& GetIAMRole() const REQUIRES(S3fsCred::token_lock);
+        const std::string& GetIAMRoleHasLock() const REQUIRES(S3fsCred::token_lock);
+        const std::string& GetIAMRole() const
+        {
+            const std::lock_guard<std::mutex> lock(token_lock);
+            return GetIAMRoleHasLock();
+        }
         bool IsSetIAMRole() const REQUIRES(S3fsCred::token_lock);
         size_t SetIAMFieldCount(size_t field_count);
         std::string SetIAMCredentialsURL(const char* url);
@@ -142,8 +155,8 @@ class S3fsCred
 
         bool GetIAMCredentialsURL(std::string& url, bool check_iam_role) REQUIRES(S3fsCred::token_lock);
         bool LoadIAMCredentials() REQUIRES(S3fsCred::token_lock);
-        bool SetIAMCredentials(const char* response) REQUIRES(S3fsCred::token_lock);
-        bool SetIAMRoleFromMetaData(const char* response) REQUIRES(S3fsCred::token_lock);
+        bool SetIAMCredentials(const char* response);
+        bool SetIAMRoleFromMetaData(const char* response);
 
         bool SetExtCredLib(const char* arg);
         bool IsSetExtCredLib() const;

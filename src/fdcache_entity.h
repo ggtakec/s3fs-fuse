@@ -73,6 +73,8 @@ class FdEntity
     private:
         static int FillFile(int fd, unsigned char byte, off_t size, off_t start);
         static ino_t GetInode(int fd);
+        static void* GetObjectThreadWorker(void* arg);
+        static void* MultipartUploadThreadWorker(void* arg);
 
         void Clear();
         ino_t GetInode() const;
@@ -82,6 +84,8 @@ class FdEntity
         bool IsUploading() REQUIRES(FdEntity::fdent_lock);
         bool SetAllStatus(bool is_loaded);                          // [NOTE] not locking
         bool SetAllStatusUnloaded() { return SetAllStatus(false); }
+        int GetObjectRequest(int fd, off_t start, off_t size);
+        int PreMultipartPostRequest(PseudoFdInfo* pseudo_obj, bool is_copy);
         int NoCachePreMultipartPost(PseudoFdInfo* pseudo_obj);
         int NoCacheMultipartPost(PseudoFdInfo* pseudo_obj, int tgfd, off_t start, off_t size);
         int NoCacheCompleteMultipartPost(PseudoFdInfo* pseudo_obj);

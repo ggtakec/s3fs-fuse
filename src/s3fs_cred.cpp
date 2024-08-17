@@ -33,11 +33,32 @@
 #include "curl.h"
 #include "string_util.h"
 #include "metaheader.h"
+#include "threadpoolman.h"
 
 //-------------------------------------------------------------------
 // Symbols
 //-------------------------------------------------------------------
 static constexpr char DEFAULT_AWS_PROFILE_NAME[] = "default";
+
+//-------------------------------------------------------------------
+// Structure of parameters to pass to thread
+//-------------------------------------------------------------------
+struct get_iamrole_thparam
+{
+    S3fsCred*   ps3fscred = nullptr;
+    std::string strurl;
+    std::string striamtoken;            // IAMv2 Token
+    int         result = 0;
+};
+
+struct get_iamcred_thparam
+{
+    S3fsCred*   ps3fscred = nullptr;
+    std::string strurl;
+    std::string striamtoken;            // IAMv2 Token
+    std::string stribmsecret;           // IBM Secret Access Key
+    int         result = 0;
+};
 
 //-------------------------------------------------------------------
 // External Credential dummy function
@@ -162,6 +183,100 @@ bool S3fsCred::ParseIAMRoleFromMetaDataResponse(const char* response, std::strin
         return !rolename.empty();
     }
     return false;
+}
+
+//
+// Thread Worker function for getting IAMv2 API Token
+//
+void* S3fsCred::GetIAMv2ApiTokenThreadWorker(void* arg)
+{
+    S3fsCred* ps3fscred = static_cast<S3fsCred*>(arg);
+
+    if(!ps3fscred){
+        return reinterpret_cast<void*>(-EIO);
+    }
+    S3FS_PRN_INFO3("Get IAMv2 API Token Thread [ps3fscred=%p]", ps3fscred);
+
+    S3fsCurl    s3fscurl;
+    std::string token;
+    int         result = s3fscurl.GetIAMv2ApiToken(S3fsCred::IAMv2_token_url, S3fsCred::IAMv2_token_ttl, S3fsCred::IAMv2_token_ttl_hdr, token);
+    if(-ENOENT == result){
+        // If we get a 404 back when requesting the token service,
+        // then it's highly likely we're running in an environment
+        // that doesn't support the AWS IMDSv2 API, so we'll skip
+        // the token retrieval in the future.
+        ps3fscred->SetIMDSVersion(1);
+
+    }else if(result != 0){
+        // If we get an unexpected error when retrieving the API
+        // token, log it but continue.  Requirement for including
+        // an API token with the metadata request may or may not
+        // be required, so we should not abort here.
+        S3FS_PRN_ERR("AWS IMDSv2 token retrieval failed: %d", result);
+
+    }else{
+        // Set token
+        if(!ps3fscred->SetIAMv2APIToken(token)){
+            S3FS_PRN_ERR("Error storing IMDSv2 API token(%s).", token.c_str());
+        }
+    }
+    return reinterpret_cast<void*>(result);
+}
+
+//
+// Thread Worker function for getting IAM Role from MetaData
+//
+void* S3fsCred::GetIAMRoleFromMetaDataThreadWorker(void* arg)
+{
+    get_iamrole_thparam* pthparam = static_cast<get_iamrole_thparam*>(arg);
+    if(!pthparam || !(pthparam->ps3fscred)){
+        return reinterpret_cast<void*>(-EIO);
+    }
+    S3FS_PRN_INFO3("Get IAM Role From MetaData [ps3fscred=%p][url=%s][iam token=%s]", pthparam->ps3fscred, pthparam->strurl.c_str(), pthparam->striamtoken.c_str());
+
+    S3fsCurl    s3fscurl;
+    std::string token;
+    if(s3fscurl.GetIAMRoleFromMetaData(pthparam->strurl.c_str(), (pthparam->striamtoken.empty() ? nullptr : pthparam->striamtoken.c_str()), token)){
+        if(pthparam->ps3fscred->SetIAMRoleFromMetaData(token.c_str())){
+            S3FS_PRN_INFO("Get and set IAM role name = %s", pthparam->ps3fscred->GetIAMRole().c_str());
+            pthparam->result = 0;
+        }else{
+            S3FS_PRN_ERR("Something error occurred, could not set IAM role name.");
+            pthparam->result = -EIO;
+        }
+    }else{
+        S3FS_PRN_ERR("Something error occurred during getting IAM Role from MetaData.");
+        pthparam->result = -EIO;
+    }
+    return reinterpret_cast<void*>(pthparam->result);
+}
+
+//
+// Thread Worker function for getting IAM Credentials
+//
+void* S3fsCred::GetIAMCredentialsThreadWorker(void* arg)
+{
+    get_iamcred_thparam* pthparam = static_cast<get_iamcred_thparam*>(arg);
+    if(!pthparam || !(pthparam->ps3fscred)){
+        return reinterpret_cast<void*>(-EIO);
+    }
+    S3FS_PRN_INFO3("Get IAM Credentials [ps3fscred=%p][url=%s][iam token=%s][ibm secrect access key=%s]", pthparam->ps3fscred, pthparam->strurl.c_str(), pthparam->striamtoken.c_str(), pthparam->stribmsecret.c_str());
+
+    S3fsCurl    s3fscurl;
+    std::string creds;
+    if(s3fscurl.GetIAMCredentials(pthparam->strurl.c_str(), (pthparam->striamtoken.empty() ? nullptr : pthparam->striamtoken.c_str()), (pthparam->stribmsecret.empty() ? nullptr : pthparam->stribmsecret.c_str()), creds)){
+        if(!pthparam->ps3fscred->SetIAMCredentials(creds.c_str())){
+            S3FS_PRN_DBG("Succeed to set IAM credentials");
+            pthparam->result = 0;
+        }else{
+            S3FS_PRN_ERR("Something error occurred, could not set IAM credentials.");
+            pthparam->result = -EIO;
+        }
+    }else{
+        S3FS_PRN_ERR("Something error occurred during getting IAM credentials.");
+        pthparam->result = -EIO;
+    }
+    return reinterpret_cast<void*>(pthparam->result);
 }
 
 //-------------------------------------------------------------------
@@ -354,28 +469,16 @@ bool S3fsCred::GetIAMCredentialsURL(std::string& url, bool check_iam_role)
         // in the S3fsCurl::GetIAMv2ApiToken method (when retrying).
         //
         if(GetIMDSVersion() > 1){
-            S3fsCurl    s3fscurl;
-            std::string token;
-            int         result = s3fscurl.GetIAMv2ApiToken(S3fsCred::IAMv2_token_url, S3fsCred::IAMv2_token_ttl, S3fsCred::IAMv2_token_ttl_hdr, token);
-            if(-ENOENT == result){
-                // If we get a 404 back when requesting the token service,
-                // then it's highly likely we're running in an environment
-                // that doesn't support the AWS IMDSv2 API, so we'll skip
-                // the token retrieval in the future.
-                SetIMDSVersion(1);
+            // make parameter for thread pool
+            thpoolman_param  ppoolparam;
+            ppoolparam.args  = this;
+            ppoolparam.psem  = nullptr;         // case await
+            ppoolparam.pfunc = S3fsCred::GetIAMv2ApiTokenThreadWorker;
 
-            }else if(result != 0){
-                // If we get an unexpected error when retrieving the API
-                // token, log it but continue.  Requirement for including
-                // an API token with the metadata request may or may not
-                // be required, so we should not abort here.
-                S3FS_PRN_ERR("AWS IMDSv2 token retrieval failed: %d", result);
-
-            }else{
-                // Set token
-                if(!SetIAMv2APIToken(token)){
-                    S3FS_PRN_ERR("Error storing IMDSv2 API token(%s).", token.c_str());
-                }
+            // send request by thread
+            if(!ThreadPoolMan::AwaitInstruct(ppoolparam)){
+                S3FS_PRN_ERR("failed setup instruction for getting IAMv2 API Token.");
+                return false;
             }
         }
         if(check_iam_role){
@@ -432,30 +535,35 @@ bool S3fsCred::LoadIAMCredentials()
         return false;
     }
 
-    const char* iam_v2_token = nullptr;
-    std::string str_iam_v2_token;
+    // make parameter for thread worker
+    get_iamcred_thparam thargs;
+    thargs.ps3fscred    = this;
+    thargs.strurl       = url;
+    thargs.result       = 0;
+
     if(GetIMDSVersion() > 1){
-        str_iam_v2_token = GetIAMv2APIToken();
-        iam_v2_token     = str_iam_v2_token.c_str();
+        thargs.striamtoken = GetIAMv2APIToken();
     }
-
-    const char* ibm_secret_access_key = nullptr;
-    std::string str_ibm_secret_access_key;
     if(IsIBMIAMAuth()){
-        str_ibm_secret_access_key = AWSSecretAccessKey;
-        ibm_secret_access_key     = str_ibm_secret_access_key.c_str();
+        thargs.stribmsecret = AWSSecretAccessKey;
     }
 
-    S3fsCurl    s3fscurl;
-    std::string response;
-    if(!s3fscurl.GetIAMCredentials(url.c_str(), iam_v2_token, ibm_secret_access_key, response)){
+    // make parameter for thread pool
+    thpoolman_param  ppoolparam;
+    ppoolparam.args  = &thargs;
+    ppoolparam.psem  = nullptr;         // case await
+    ppoolparam.pfunc = S3fsCred::GetIAMCredentialsThreadWorker;
+
+    // send request by thread
+    if(!ThreadPoolMan::AwaitInstruct(ppoolparam)){
+        S3FS_PRN_ERR("failed setup instruction for loading IAMv2 API Token.");
         return false;
     }
 
-    if(!SetIAMCredentials(response.c_str())){
-        S3FS_PRN_ERR("Something error occurred, could not set IAM role name.");
+    if(0 != thargs.result){
         return false;
     }
+
     return true;
 }
 
@@ -474,24 +582,31 @@ bool S3fsCred::LoadIAMRoleFromMetaData()
             return false;
         }
 
-        const char* iam_v2_token = nullptr;
-        std::string str_iam_v2_token;
+        // make parameter for thread worker
+        get_iamrole_thparam thargs;
+        thargs.ps3fscred   = this;
+        thargs.strurl      = url;
+        thargs.result      = 0;
+
         if(GetIMDSVersion() > 1){
-            str_iam_v2_token = GetIAMv2APIToken();
-            iam_v2_token     = str_iam_v2_token.c_str();
+            thargs.striamtoken = GetIAMv2APIToken();
         }
 
-        S3fsCurl    s3fscurl;
-        std::string token;
-        if(!s3fscurl.GetIAMRoleFromMetaData(url.c_str(), iam_v2_token, token)){
+        // make parameter for thread pool
+        thpoolman_param  ppoolparam;
+        ppoolparam.args  = &thargs;
+        ppoolparam.psem  = nullptr;         // case await
+        ppoolparam.pfunc = S3fsCred::GetIAMRoleFromMetaDataThreadWorker;
+
+        // send request by thread
+        if(!ThreadPoolMan::AwaitInstruct(ppoolparam)){
+            S3FS_PRN_ERR("failed setup instruction for loading IAMv2 API Token.");
             return false;
         }
 
-        if(!SetIAMRoleFromMetaData(token.c_str())){
-            S3FS_PRN_ERR("Something error occurred, could not set IAM role name.");
+        if(0 != thargs.result){
             return false;
         }
-        S3FS_PRN_INFO("loaded IAM role name = %s", GetIAMRole().c_str());
     }
     return true;
 }

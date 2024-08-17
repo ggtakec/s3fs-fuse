@@ -33,24 +33,6 @@ class FdEntity;
 class UntreatedParts;
 
 //------------------------------------------------
-// Structure of parameters to pass to thread
-//------------------------------------------------
-class PseudoFdInfo;
-
-struct pseudofdinfo_thparam
-{
-    PseudoFdInfo* ppseudofdinfo = nullptr;
-    std::string   path;
-    std::string   upload_id;
-    int           upload_fd = -1;
-    off_t         start = 0;
-    off_t         size = 0;
-    bool          is_copy = false;
-    int           part_num = -1;
-    etagpair*     petag = nullptr;
-};
-
-//------------------------------------------------
 // Class PseudoFdInfo
 //------------------------------------------------
 class PseudoFdInfo
@@ -83,6 +65,7 @@ class PseudoFdInfo
         bool CompleteInstruction(int result) REQUIRES(upload_list_lock);
         bool ParallelMultipartUpload(const char* path, const mp_part_list_t& mplist, bool is_copy) REQUIRES(upload_list_lock);
         bool InsertUploadPart(off_t start, off_t size, int part_num, bool is_copy, etagpair** ppetag) REQUIRES(upload_list_lock);
+        bool PreMultipartPostRequest(const std::string& strpath, const headers_t& meta);
         bool CancelAllThreads();
         bool ExtractUploadPartsFromUntreatedArea(const off_t& untreated_start, const off_t& untreated_size, mp_part_list_t& to_upload_list, filepart_list_t& cancel_upload_list, off_t max_mp_size);
 

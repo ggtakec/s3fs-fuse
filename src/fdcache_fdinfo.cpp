@@ -35,6 +35,23 @@
 #include "curl.h"
 #include "string_util.h"
 #include "threadpoolman.h"
+#include "s3fs_threadreqs.h"
+
+//------------------------------------------------
+// Structure of parameters to pass to thread
+//------------------------------------------------
+struct pseudofdinfo_mpupload_thparam
+{
+    PseudoFdInfo* ppseudofdinfo = nullptr;
+    std::string   path;
+    std::string   upload_id;
+    int           upload_fd = -1;
+    off_t         start = 0;
+    off_t         size = 0;
+    bool          is_copy = false;
+    int           part_num = -1;
+    etagpair*     petag = nullptr;
+};
 
 //------------------------------------------------
 // PseudoFdInfo class variables
@@ -46,11 +63,11 @@ int PseudoFdInfo::opt_max_threads = -1;
 // PseudoFdInfo class methods
 //------------------------------------------------
 //
-// Worker function for uploading
+// Thread Worker function for uploading
 //
 void* PseudoFdInfo::MultipartUploadThreadWorker(void* arg)
 {
-    std::unique_ptr<pseudofdinfo_thparam> pthparam(static_cast<pseudofdinfo_thparam*>(arg));
+    std::unique_ptr<pseudofdinfo_mpupload_thparam> pthparam(static_cast<pseudofdinfo_mpupload_thparam*>(arg));
     if(!pthparam || !(pthparam->ppseudofdinfo)){
         return reinterpret_cast<void*>(-EIO);
     }
@@ -414,7 +431,7 @@ bool PseudoFdInfo::ParallelMultipartUpload(const char* path, const mp_part_list_
         }
 
         // make parameter for my thread
-        pseudofdinfo_thparam* thargs = new pseudofdinfo_thparam;
+        pseudofdinfo_mpupload_thparam* thargs = new pseudofdinfo_mpupload_thparam;
         thargs->ppseudofdinfo        = this;
         thargs->path                 = SAFESTRPTR(path);
         thargs->upload_id            = upload_id;
@@ -462,6 +479,30 @@ bool PseudoFdInfo::ParallelMultipartUploadAll(const char* path, const mp_part_li
 
     // Wait for all thread exiting
     result = WaitAllThreadsExit();
+
+    return true;
+}
+
+//
+// Common method that calls S3fsCurl::PreMultipartPostRequest via pre_multipart_post_request
+//
+// [NOTE]
+// If the request is successful, initialize upload_id.
+//
+bool PseudoFdInfo::PreMultipartPostRequest(const std::string& strpath, const headers_t& meta)
+{
+    // get upload_id
+    std::string new_upload_id;
+    if(0 != pre_multipart_post_request(strpath, meta, true, new_upload_id)){
+        return false;
+    }
+
+    // reset upload_id
+    if(!RowInitialUploadInfo(new_upload_id, false/* not need to cancel */)){
+        S3FS_PRN_ERR("failed to setup multipart upload(set upload id to object)");
+        return false;
+    }
+    S3FS_PRN_DBG("succeed to setup multipart upload(set upload id to object)");
 
     return true;
 }
@@ -548,18 +589,9 @@ ssize_t PseudoFdInfo::UploadBoundaryLastUntreatedArea(const char* path, headers_
     // Has multipart uploading already started?
     //
     if(!IsUploading()){
-        // Multipart uploading hasn't started yet, so start it.
-        //
-        S3fsCurl    s3fscurl(true);
-        std::string tmp_upload_id;
-        int         result;
-        if(0 != (result = s3fscurl.PreMultipartPostRequest(path, meta, tmp_upload_id, true))){
-            S3FS_PRN_ERR("failed to setup multipart upload(create upload id) by errno(%d)", result);
-            return result;
-        }
-        if(!RowInitialUploadInfo(tmp_upload_id, false/* not need to cancel */)){
-            S3FS_PRN_ERR("failed to setup multipart upload(set upload id to object)");
-            return result;
+        std::string strpath = SAFESTRPTR(path);
+        if(!PreMultipartPostRequest(strpath, meta)){
+            return -EIO;
         }
     }
 

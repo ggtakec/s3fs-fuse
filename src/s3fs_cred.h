@@ -100,6 +100,9 @@ class S3fsCred
 
     private:
         static bool ParseIAMRoleFromMetaDataResponse(const char* response, std::string& rolename);
+        static void* GetIAMv2ApiTokenThreadWorker(void* arg);
+        static void* GetIAMRoleFromMetaDataThreadWorker(void* arg);
+        static void* GetIAMCredentialsThreadWorker(void* arg);
 
         bool SetS3fsPasswdFile(const char* file);
         bool IsSetPasswdFile() const;

@@ -39,6 +39,7 @@
 #include "s3fs_util.h"
 #include "string_util.h"
 #include "addhead.h"
+#include "s3fs_threadreqs.h"
 
 //-------------------------------------------------------------------
 // Symbols
@@ -1432,14 +1433,13 @@ std::unique_ptr<S3fsCurl> S3fsCurl::CreateParallelS3fsCurl(const char* tpath, in
     return s3fscurl;
 }
 
-int S3fsCurl::ParallelMultipartUploadRequest(const char* tpath, headers_t& meta, int fd)
+int S3fsCurl::ParallelMultipartUploadRequest(const char* tpath, const headers_t& meta, int fd)
 {
     int            result;
     std::string    upload_id;
     struct stat    st;
     etaglist_t     list;
     off_t          remaining_bytes;
-    S3fsCurl       s3fscurl(true);
 
     S3FS_PRN_INFO3("[tpath=%s][fd=%d]", SAFESTRPTR(tpath), fd);
 
@@ -1448,10 +1448,9 @@ int S3fsCurl::ParallelMultipartUploadRequest(const char* tpath, headers_t& meta,
         return -errno;
     }
 
-    if(0 != (result = s3fscurl.PreMultipartPostRequest(tpath, meta, upload_id, false))){
+    if(0 != (result = pre_multipart_post_request(std::string(tpath), meta, false, upload_id))){
         return result;
     }
-    s3fscurl.DestroyCurlHandle();
 
     // Initialize S3fsMultiCurl
     S3fsMultiCurl curlmulti(GetMaxParallelCount());
@@ -1488,18 +1487,14 @@ int S3fsCurl::ParallelMultipartUploadRequest(const char* tpath, headers_t& meta,
     // Multi request
     if(0 != (result = curlmulti.Request())){
         S3FS_PRN_ERR("error occurred in multi request(errno=%d).", result);
-
-        S3fsCurl s3fscurl_abort(true);
-        int result2 = s3fscurl_abort.AbortMultipartUpload(tpath, upload_id);
-        s3fscurl_abort.DestroyCurlHandle();
-        if(result2 != 0){
+        int result2;
+        if(0 != (result2 = abort_multipart_upload_request(std::string(tpath), upload_id))){
             S3FS_PRN_ERR("error aborting multipart upload(errno=%d).", result2);
         }
-
         return result;
     }
 
-    if(0 != (result = s3fscurl.CompleteMultipartPostRequest(tpath, upload_id, list))){
+    if(0 != (result = complete_multipart_post_request(std::string(tpath), upload_id, list))){
         return result;
     }
     return 0;
@@ -1511,7 +1506,6 @@ int S3fsCurl::ParallelMixMultipartUploadRequest(const char* tpath, headers_t& me
     std::string    upload_id;
     struct stat    st;
     etaglist_t     list;
-    S3fsCurl       s3fscurl(true);
 
     S3FS_PRN_INFO3("[tpath=%s][fd=%d]", SAFESTRPTR(tpath), fd);
 
@@ -1520,10 +1514,9 @@ int S3fsCurl::ParallelMixMultipartUploadRequest(const char* tpath, headers_t& me
         return -errno;
     }
 
-    if(0 != (result = s3fscurl.PreMultipartPostRequest(tpath, meta, upload_id, true))){
+    if(0 != (result = pre_multipart_post_request(std::string(tpath), meta, true, upload_id))){
         return result;
     }
-    s3fscurl.DestroyCurlHandle();
 
     // for copy multipart
     std::string srcresource;
@@ -1606,17 +1599,14 @@ int S3fsCurl::ParallelMixMultipartUploadRequest(const char* tpath, headers_t& me
     // Multi request
     if(0 != (result = curlmulti.Request())){
         S3FS_PRN_ERR("error occurred in multi request(errno=%d).", result);
-
-        S3fsCurl s3fscurl_abort(true);
-        int result2 = s3fscurl_abort.AbortMultipartUpload(tpath, upload_id);
-        s3fscurl_abort.DestroyCurlHandle();
-        if(result2 != 0){
+        int result2;
+        if(0 != (result2 = abort_multipart_upload_request(std::string(tpath), upload_id))){
             S3FS_PRN_ERR("error aborting multipart upload(errno=%d).", result2);
         }
         return result;
     }
 
-    if(0 != (result = s3fscurl.CompleteMultipartPostRequest(tpath, upload_id, list))){
+    if(0 != (result = complete_multipart_post_request(std::string(tpath), upload_id, list))){
         return result;
     }
     return 0;
@@ -3409,7 +3399,7 @@ int S3fsCurl::HeadRequest(const char* tpath, headers_t& meta)
     return 0;
 }
 
-int S3fsCurl::PutHeadRequest(const char* tpath, headers_t& meta, bool is_copy)
+int S3fsCurl::PutHeadRequest(const char* tpath, const headers_t& meta, bool is_copy)
 {
     S3FS_PRN_INFO3("[tpath=%s]", SAFESTRPTR(tpath));
 
@@ -3433,7 +3423,7 @@ int S3fsCurl::PutHeadRequest(const char* tpath, headers_t& meta, bool is_copy)
     requestHeaders      = curl_slist_sort_insert(requestHeaders, "Content-Type", contype.c_str());
 
     // Make request headers
-    for(headers_t::iterator iter = meta.begin(); iter != meta.end(); ++iter){
+    for(headers_t::const_iterator iter = meta.begin(); iter != meta.end(); ++iter){
         std::string key   = lower(iter->first);
         std::string value = iter->second;
         if(is_prefix(key.c_str(), "x-amz-acl")){
@@ -3697,22 +3687,17 @@ int S3fsCurl::PreGetObjectRequest(const char* tpath, int fd, off_t start, off_t 
     return 0;
 }
 
-int S3fsCurl::GetObjectRequest(const char* tpath, int fd, off_t start, off_t size)
+int S3fsCurl::GetObjectRequest(const char* tpath, int fd, off_t start, off_t size, sse_type_t ssetype, const std::string& ssevalue)
 {
     int result;
 
-    S3FS_PRN_INFO3("[tpath=%s][start=%lld][size=%lld]", SAFESTRPTR(tpath), static_cast<long long>(start), static_cast<long long>(size));
+    S3FS_PRN_INFO3("[tpath=%s][start=%lld][size=%lld][ssetype=%u][ssevalue=%s]", SAFESTRPTR(tpath), static_cast<long long>(start), static_cast<long long>(size), static_cast<uint8_t>(ssetype), ssevalue.c_str());
 
     if(!tpath){
         return -EINVAL;
     }
-    sse_type_t local_ssetype = sse_type_t::SSE_DISABLE;
-    std::string ssevalue;
-    if(!get_object_sse_type(tpath, local_ssetype, ssevalue)){
-        S3FS_PRN_WARN("Failed to get SSE type for file(%s).", SAFESTRPTR(tpath));
-    }
 
-    if(0 != (result = PreGetObjectRequest(tpath, fd, start, size, local_ssetype, ssevalue))){
+    if(0 != (result = PreGetObjectRequest(tpath, fd, start, size, ssetype, ssevalue))){
         return result;
     }
     if(!fpLazySetup || !fpLazySetup(this)){
@@ -3871,7 +3856,7 @@ int S3fsCurl::ListBucketRequest(const char* tpath, const char* query)
 //   Date: Mon, 1 Nov 2010 20:34:56 GMT
 //   Authorization: AWS VGhpcyBtZXNzYWdlIHNpZ25lZCBieSBlbHZpbmc=
 //
-int S3fsCurl::PreMultipartPostRequest(const char* tpath, headers_t& meta, std::string& upload_id, bool is_copy)
+int S3fsCurl::PreMultipartPostRequest(const char* tpath, const headers_t& meta, std::string& upload_id, bool is_copy)
 {
     S3FS_PRN_INFO3("[tpath=%s]", SAFESTRPTR(tpath));
 
@@ -3895,7 +3880,7 @@ int S3fsCurl::PreMultipartPostRequest(const char* tpath, headers_t& meta, std::s
 
     std::string contype = S3fsCurl::LookupMimeType(tpath);
 
-    for(headers_t::iterator iter = meta.begin(); iter != meta.end(); ++iter){
+    for(headers_t::const_iterator iter = meta.begin(); iter != meta.end(); ++iter){
         std::string key   = lower(iter->first);
         std::string value = iter->second;
         if(is_prefix(key.c_str(), "x-amz-acl")){
@@ -3974,7 +3959,7 @@ int S3fsCurl::PreMultipartPostRequest(const char* tpath, headers_t& meta, std::s
     return 0;
 }
 
-int S3fsCurl::CompleteMultipartPostRequest(const char* tpath, const std::string& upload_id, etaglist_t& parts)
+int S3fsCurl::CompleteMultipartPostRequest(const char* tpath, const std::string& upload_id, const etaglist_t& parts)
 {
     S3FS_PRN_INFO3("[tpath=%s][parts=%zu]", SAFESTRPTR(tpath), parts.size());
 
@@ -3985,7 +3970,7 @@ int S3fsCurl::CompleteMultipartPostRequest(const char* tpath, const std::string&
     // make contents
     std::string postContent;
     postContent += "<CompleteMultipartUpload>\n";
-    for(etaglist_t::iterator it = parts.begin(); it != parts.end(); ++it){
+    for(etaglist_t::const_iterator it = parts.begin(); it != parts.end(); ++it){
         if(it->etag.empty()){
             S3FS_PRN_ERR("%d file part is not finished uploading.", it->part_num);
             return -EIO;
@@ -4450,11 +4435,8 @@ int S3fsCurl::MultipartHeadRequest(const char* tpath, off_t size, headers_t& met
     // Multi request
     if(0 != (result = curlmulti.Request())){
         S3FS_PRN_ERR("error occurred in multi request(errno=%d).", result);
-
-        S3fsCurl s3fscurl_abort(true);
-        int result2 = s3fscurl_abort.AbortMultipartUpload(tpath, upload_id);
-        s3fscurl_abort.DestroyCurlHandle();
-        if(result2 != 0){
+        int result2;
+        if(0 != (result2 = abort_multipart_upload_request(std::string(tpath), upload_id))){
             S3FS_PRN_ERR("error aborting multipart upload(errno=%d).", result2);
         }
         return result;
@@ -4545,11 +4527,8 @@ int S3fsCurl::MultipartRenameRequest(const char* from, const char* to, headers_t
     // Multi request
     if(0 != (result = curlmulti.Request())){
         S3FS_PRN_ERR("error occurred in multi request(errno=%d).", result);
-
-        S3fsCurl s3fscurl_abort(true);
-        int result2 = s3fscurl_abort.AbortMultipartUpload(to, upload_id);
-        s3fscurl_abort.DestroyCurlHandle();
-        if(result2 != 0){
+        int result2;
+        if(0 != (result2 = abort_multipart_upload_request(std::string(to), upload_id))){
             S3FS_PRN_ERR("error aborting multipart upload(errno=%d).", result2);
         }
         return result;

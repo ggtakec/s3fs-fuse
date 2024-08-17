@@ -36,12 +36,44 @@
 #include "s3fs_logger.h"
 #include "s3fs_util.h"
 #include "curl.h"
+#include "curl_util.h"
 #include "s3fs_cred.h"
+#include "threadpoolman.h"
+#include "s3fs_threadreqs.h"
 
 //------------------------------------------------
 // Symbols
 //------------------------------------------------
 static constexpr int MAX_MULTIPART_CNT         = 10 * 1000; // S3 multipart max count
+
+//------------------------------------------------
+// Structure of parameters to pass to thread
+//------------------------------------------------
+//
+// Get Object Request parameter structure for Thread Pool.
+//
+struct get_object_req_thparam
+{
+    std::string path;
+    int         fd     = -1;
+    off_t       start  = 0;
+    off_t       size   = 0;
+    int         result = 0;
+};
+
+//
+// Multipart Upload Request parameter structure for Thread Pool.
+//
+struct multipart_upload_req_thparam
+{
+    std::string path;
+    std::string upload_id;
+    int         fd        = -1;
+    off_t       start     = 0;
+    off_t       size      = 0;
+    etagpair*   petagpair = nullptr;
+    int         result    = 0;
+};
 
 //------------------------------------------------
 // FdEntity class variables
@@ -100,6 +132,46 @@ ino_t FdEntity::GetInode(int fd)
         return 0;
     }
     return st.st_ino;
+}
+
+//
+// Worker function for get object request
+//
+void* FdEntity::GetObjectThreadWorker(void* arg)
+{
+    get_object_req_thparam* pthparam = static_cast<get_object_req_thparam*>(arg);
+    if(!pthparam){
+        return reinterpret_cast<void*>(-EIO);
+    }
+    S3FS_PRN_INFO3("Get Object Request [path=%s][fd=%d][start=%lld][size=%lld]", pthparam->path.c_str(), pthparam->fd, static_cast<long long>(pthparam->start), static_cast<long long>(pthparam->size));
+
+    sse_type_t  ssetype = sse_type_t::SSE_DISABLE;
+    std::string ssevalue;
+    if(!get_object_sse_type(pthparam->path.c_str(), ssetype, ssevalue)){
+        S3FS_PRN_WARN("Failed to get SSE type for file(%s).", pthparam->path.c_str());
+    }
+
+    S3fsCurl    s3fscurl;
+    pthparam->result = s3fscurl.GetObjectRequest(pthparam->path.c_str(), pthparam->fd, pthparam->start, pthparam->size, ssetype, ssevalue);
+
+    return reinterpret_cast<void*>(pthparam->result);
+}
+
+//
+// Worker function for multipart upload request
+//
+void* FdEntity::MultipartUploadThreadWorker(void* arg)
+{
+    multipart_upload_req_thparam* pthparam = static_cast<multipart_upload_req_thparam*>(arg);
+    if(!pthparam){
+        return reinterpret_cast<void*>(-EIO);
+    }
+    S3FS_PRN_INFO3("Multipart Upload Request [path=%s][upload id=%s][fd=%d][start=%lld][size=%lld][etagpair=%p]", pthparam->path.c_str(), pthparam->upload_id.c_str(), pthparam->fd, static_cast<long long>(pthparam->start), static_cast<long long>(pthparam->size), pthparam->petagpair);
+
+    S3fsCurl s3fscurl(true);
+    pthparam->result = s3fscurl.MultipartUploadRequest(pthparam->upload_id, pthparam->path.c_str(), pthparam->fd, pthparam->start, pthparam->size, pthparam->petagpair);
+
+    return reinterpret_cast<void*>(pthparam->result);
 }
 
 //------------------------------------------------
@@ -1014,6 +1086,36 @@ bool FdEntity::SetAllStatus(bool is_loaded)
     return true;
 }
 
+//
+// Common method to calling S3fsCurl::GetObjectRequest
+//
+int FdEntity::GetObjectRequest(int fd, off_t start, off_t size)
+{
+    // parameter for thread worker
+    get_object_req_thparam thargs;
+    thargs.path   = path;
+    thargs.fd     = fd;
+    thargs.start  = start;
+    thargs.size   = size;
+    thargs.result = 0;
+
+    // make parameter for thread pool
+    thpoolman_param  ppoolparam;
+    ppoolparam.args  = &thargs;
+    ppoolparam.psem  = nullptr;         // case await
+    ppoolparam.pfunc = FdEntity::GetObjectThreadWorker;
+
+    // send request by thread
+    if(!ThreadPoolMan::AwaitInstruct(ppoolparam)){
+        S3FS_PRN_ERR("failed to setup Get Object Request Thread Worker");
+        return -EIO;
+    }
+    if(0 != thargs.result){
+        S3FS_PRN_ERR("Get Object Request(path=%s, fd=%d, start=%lld, size=%lld) returns with error", path.c_str(), fd, static_cast<long long int>(start), static_cast<long long int>(size));
+    }
+    return thargs.result;
+}
+
 int FdEntity::Load(off_t start, off_t size, bool is_modified_flag)
 {
     S3FS_PRN_DBG("[path=%s][physical_fd=%d][offset=%lld][size=%lld]", path.c_str(), physical_fd, static_cast<long long int>(start), static_cast<long long int>(size));
@@ -1046,8 +1148,7 @@ int FdEntity::Load(off_t start, off_t size, bool is_modified_flag)
             }else{
                 // single request
                 if(0 < need_load_size){
-                    S3fsCurl s3fscurl;
-                    result = s3fscurl.GetObjectRequest(path.c_str(), physical_fd, iter->offset, need_load_size);
+                    result = GetObjectRequest(physical_fd, iter->offset, need_load_size);
                 }else{
                     result = 0;
                 }
@@ -1171,8 +1272,7 @@ int FdEntity::NoCacheLoadAndPost(PseudoFdInfo* pseudo_obj, off_t start, off_t si
 
                 // single area get request
                 if(0 < need_load_size){
-                    S3fsCurl s3fscurl;
-                    if(0 != (result = s3fscurl.GetObjectRequest(path.c_str(), tmpfd, offset, oneread))){
+                    if(0 != (result = GetObjectRequest(tmpfd, offset, oneread))){
                         S3FS_PRN_ERR("failed to get object(start=%lld, size=%lld) for file(physical_fd=%d).", static_cast<long long int>(offset), static_cast<long long int>(oneread), tmpfd);
                         break;
                     }
@@ -1229,6 +1329,38 @@ int FdEntity::NoCacheLoadAndPost(PseudoFdInfo* pseudo_obj, off_t start, off_t si
     return result;
 }
 
+//
+// Common method that calls S3fsCurl::PreMultipartPostRequest via pre_multipart_post_request
+//
+// [NOTE]
+// If the request is successful, initialize upload_id.
+//
+int FdEntity::PreMultipartPostRequest(PseudoFdInfo* pseudo_obj, bool is_copy)
+{
+    if(!pseudo_obj){
+        S3FS_PRN_ERR("Internal error, pseudo fd object pointer is null.");
+        return -EIO;
+    }
+
+    // get upload_id
+    std::string upload_id;
+    int         result;
+    if(0 != (result = pre_multipart_post_request(path, orgmeta, false, upload_id))){
+        return result;
+    }
+
+    // reset upload_id
+    if(!pseudo_obj->InitialUploadInfo(upload_id)){
+        S3FS_PRN_ERR("failed to initialize upload id(%s)", upload_id.c_str());
+        return -EIO;
+    }
+
+    // Clear the dirty flag, because the meta data is updated.
+    pending_status = pending_status_t::NO_UPDATE_PENDING;
+
+    return 0;
+}
+
 // [NOTE]
 // At no disk space for caching object.
 // This method is starting multipart uploading.
@@ -1243,21 +1375,11 @@ int FdEntity::NoCachePreMultipartPost(PseudoFdInfo* pseudo_obj)
     // initialize multipart upload values
     pseudo_obj->ClearUploadInfo(true);
 
-    S3fsCurl    s3fscurl(true);
-    std::string upload_id;
-    int         result;
-    if(0 != (result = s3fscurl.PreMultipartPostRequest(path.c_str(), orgmeta, upload_id, false))){
+    int result;
+    if(0 != (result = PreMultipartPostRequest(pseudo_obj, false))){
         return result;
     }
-    s3fscurl.DestroyCurlHandle();
 
-    // Clear the dirty flag, because the meta data is updated.
-    pending_status = pending_status_t::NO_UPDATE_PENDING;
-
-    // reset upload_id
-    if(!pseudo_obj->InitialUploadInfo(upload_id)){
-        return -EIO;
-    }
     return 0;
 }
 
@@ -1272,20 +1394,42 @@ int FdEntity::NoCacheMultipartPost(PseudoFdInfo* pseudo_obj, int tgfd, off_t sta
         return -EIO;
     }
 
+    // parameter for thread worker
+    multipart_upload_req_thparam thargs;
+    thargs.path      = path;
+    thargs.upload_id.clear();
+    thargs.fd        = tgfd;
+    thargs.start     = start;
+    thargs.size      = size;
+    thargs.petagpair = nullptr;
+    thargs.result    = 0;
+
     // get upload id
-    std::string upload_id;
-    if(!pseudo_obj->GetUploadId(upload_id)){
+    if(!pseudo_obj->GetUploadId(thargs.upload_id)){
         return -EIO;
     }
 
     // append new part and get it's etag string pointer
-    etagpair* petagpair = nullptr;
-    if(!pseudo_obj->AppendUploadPart(start, size, false, &petagpair)){
+    if(!pseudo_obj->AppendUploadPart(start, size, false, &(thargs.petagpair))){
         return -EIO;
     }
 
-    S3fsCurl s3fscurl(true);
-    return s3fscurl.MultipartUploadRequest(upload_id, path.c_str(), tgfd, start, size, petagpair);
+    // make parameter for thread pool
+    thpoolman_param  ppoolparam;
+    ppoolparam.args  = &thargs;
+    ppoolparam.psem  = nullptr;         // case await
+    ppoolparam.pfunc = FdEntity::MultipartUploadThreadWorker;
+
+    // send request by thread
+    if(!ThreadPoolMan::AwaitInstruct(ppoolparam)){
+        S3FS_PRN_ERR("failed to setup Get Object Request Thread Worker");
+        return -EIO;
+    }
+    if(0 != thargs.result){
+        S3FS_PRN_ERR("Multipart Upload Request(path=%s, upload_id=%s, fd=%d, start=%lld, size=%lld) returns with error(%d)", path.c_str(), thargs.upload_id.c_str(), tgfd, static_cast<long long int>(start), static_cast<long long int>(size), thargs.result);
+        return thargs.result;
+    }
+    return 0;
 }
 
 // [NOTE]
@@ -1294,26 +1438,21 @@ int FdEntity::NoCacheMultipartPost(PseudoFdInfo* pseudo_obj, int tgfd, off_t sta
 //
 int FdEntity::NoCacheCompleteMultipartPost(PseudoFdInfo* pseudo_obj)
 {
-    etaglist_t etaglist;
-    if(!pseudo_obj || !pseudo_obj->IsUploading() || !pseudo_obj->GetEtaglist(etaglist)){
-        S3FS_PRN_ERR("There is no upload id or etag list.");
-        return -EIO;
-    }
-
-    // get upload id
+    // get upload id and etag list
     std::string upload_id;
-    if(!pseudo_obj->GetUploadId(upload_id)){
+    etaglist_t  parts;
+    if(!pseudo_obj->GetUploadId(upload_id) || !pseudo_obj->GetEtaglist(parts)){
         return -EIO;
     }
 
-    S3fsCurl s3fscurl(true);
-    int      result = s3fscurl.CompleteMultipartPostRequest(path.c_str(), upload_id, etaglist);
-    s3fscurl.DestroyCurlHandle();
-    if(0 != result){
-        S3fsCurl s3fscurl_abort(true);
-        int result2 = s3fscurl.AbortMultipartUpload(path.c_str(), upload_id);
-        s3fscurl_abort.DestroyCurlHandle();
-        if(0 != result2){
+    int result;
+    if(0 != (result = complete_multipart_post_request(path, upload_id, parts))){
+        S3FS_PRN_ERR("failed to complete multipart post by errno(%d)", result);
+        untreated_list.ClearAll();
+        pseudo_obj->ClearUploadInfo(); // clear multipart upload info
+
+        int result2;
+        if(0 != (result2 = abort_multipart_upload_request(path, upload_id))){
             S3FS_PRN_ERR("failed to abort multipart upload by errno(%d)", result2);
         }
         return result;
@@ -1423,23 +1562,20 @@ int FdEntity::RowFlushNoMultipart(const PseudoFdInfo* pseudo_obj, const char* tp
         return -EBADF;
     }
 
-    int         result;
-    std::string tmppath    = path;
-    headers_t   tmporgmeta = orgmeta;
-
     // If there is no loading all of the area, loading all area.
     off_t restsize = pagelist.GetTotalUnloadedPageSize();
     if(0 < restsize){
         // check disk space
         if(!ReserveDiskSpace(restsize)){
             // no enough disk space
-            S3FS_PRN_WARN("Not enough local storage to flush: [path=%s][pseudo_fd=%d][physical_fd=%d]", path.c_str(), pseudo_obj->GetPseudoFd(), physical_fd);
+            S3FS_PRN_WARN("Not enough local storage to flush: [path=%s][pseudo_fd=%d][physical_fd=%d]", (tpath ? tpath : path.c_str()), pseudo_obj->GetPseudoFd(), physical_fd);
             return -ENOSPC;   // No space left on device
         }
     }
     FdManager::FreeReservedDiskSpace(restsize);
 
     // Always load all uninitialized area
+    int result;
     if(0 != (result = Load(/*start=*/ 0, /*size=*/ 0))){
         S3FS_PRN_ERR("failed to upload all area(errno=%d)", result);
         return result;
@@ -1457,19 +1593,40 @@ int FdEntity::RowFlushNoMultipart(const PseudoFdInfo* pseudo_obj, const char* tp
         S3FS_PRN_ERR("fstat is failed by errno(%d), but continue...", errno);
     }
 
-    S3fsCurl s3fscurl(true);
-    result = s3fscurl.PutRequest(tpath ? tpath : tmppath.c_str(), tmporgmeta, physical_fd);
+    // parameter for thread worker
+    put_req_thparam thargs;
+    thargs.path   = tpath ? tpath : path;
+    thargs.meta   = orgmeta;            // copy
+    thargs.fd     = physical_fd;
+    thargs.ahbe   = true;
+    thargs.result = 0;
+
+    // make parameter for thread pool
+    thpoolman_param  ppoolparam;
+    ppoolparam.args  = &thargs;
+    ppoolparam.psem  = nullptr;         // case await
+    ppoolparam.pfunc = put_req_threadworker;
+
+    // send request by thread
+    if(!ThreadPoolMan::AwaitInstruct(ppoolparam)){
+        S3FS_PRN_ERR("failed to setup Put Request for Thread Worker");
+        return -EIO;
+    }
+    if(0 != thargs.result){
+        // continue...
+        S3FS_PRN_DBG("Put Request(%s) returns with errno(%d)", thargs.path.c_str(), thargs.result);
+    }
 
     // reset uploaded file size
     size_orgmeta = st.st_size;
 
     untreated_list.ClearAll();
 
-    if(0 == result){
+    if(0 == thargs.result){
         pagelist.ClearAllModified();
     }
 
-    return result;
+    return thargs.result;
 }
 
 // [NOTE]
@@ -1533,8 +1690,31 @@ int FdEntity::RowFlushMultipart(PseudoFdInfo* pseudo_obj, const char* tpath)
 
             }else{
                 // normal uploading (too small part size)
-                S3fsCurl s3fscurl(true);
-                result = s3fscurl.PutRequest(tpath ? tpath : tmppath.c_str(), tmporgmeta, physical_fd);
+
+                // parameter for thread worker
+                put_req_thparam thargs;
+                thargs.path   = tpath ? tpath : tmppath;
+                thargs.meta   = tmporgmeta;         // copy
+                thargs.fd     = physical_fd;
+                thargs.ahbe   = true;
+                thargs.result = 0;
+
+                // make parameter for thread pool
+                thpoolman_param  ppoolparam;
+                ppoolparam.args  = &thargs;
+                ppoolparam.psem  = nullptr;         // case await
+                ppoolparam.pfunc = put_req_threadworker;
+
+                // send request by thread
+                if(!ThreadPoolMan::AwaitInstruct(ppoolparam)){
+                    S3FS_PRN_ERR("failed to setup Put Request for Thread Worker");
+                    return -EIO;
+                }
+                if(0 != thargs.result){
+                    // continue...
+                    S3FS_PRN_DBG("Put Request(%s) returns with errno(%d)", (tpath ? tpath : tmppath.c_str()), thargs.result);
+                }
+                result = thargs.result;
             }
 
             // reset uploaded file size
@@ -1660,8 +1840,30 @@ int FdEntity::RowFlushMixMultipart(PseudoFdInfo* pseudo_obj, const char* tpath)
                     return result;
                 }
 
-                S3fsCurl s3fscurl(true);
-                result = s3fscurl.PutRequest(tpath ? tpath : tmppath.c_str(), tmporgmeta, physical_fd);
+                // parameter for thread worker
+                put_req_thparam thargs;
+                thargs.path   = tpath ? tpath : tmppath;
+                thargs.meta   = tmporgmeta;         // copy
+                thargs.fd     = physical_fd;
+                thargs.ahbe   = true;
+                thargs.result = 0;
+
+                // make parameter for thread pool
+                thpoolman_param  ppoolparam;
+                ppoolparam.args  = &thargs;
+                ppoolparam.psem  = nullptr;         // case await
+                ppoolparam.pfunc = put_req_threadworker;
+
+                // send request by thread
+                if(!ThreadPoolMan::AwaitInstruct(ppoolparam)){
+                    S3FS_PRN_ERR("failed to setup Put Request for Thread Worker");
+                    return -EIO;
+                }
+                if(0 != thargs.result){
+                    // continue...
+                    S3FS_PRN_DBG("Put Request(%s) returns with errno(%d)", (tpath ? tpath : tmppath.c_str()), thargs.result);
+                }
+                result = thargs.result;
             }
 
             // reset uploaded file size
@@ -1734,9 +1936,30 @@ int FdEntity::RowFlushStreamMultipart(PseudoFdInfo* pseudo_obj, const char* tpat
             return result;
         }
 
-        headers_t tmporgmeta = orgmeta;
-        S3fsCurl s3fscurl(true);
-        result = s3fscurl.PutRequest(path.c_str(), tmporgmeta, physical_fd);
+        // parameter for thread worker
+        put_req_thparam thargs;
+        thargs.path   = path;
+        thargs.meta   = orgmeta;            // copy
+        thargs.fd     = physical_fd;
+        thargs.ahbe   = true;
+        thargs.result = 0;
+
+        // make parameter for thread pool
+        thpoolman_param  ppoolparam;
+        ppoolparam.args  = &thargs;
+        ppoolparam.psem  = nullptr;         // case await
+        ppoolparam.pfunc = put_req_threadworker;
+
+        // send request by thread
+        if(!ThreadPoolMan::AwaitInstruct(ppoolparam)){
+            S3FS_PRN_ERR("failed to setup Put Request for Thread Worker");
+            return -EIO;
+        }
+        if(0 != thargs.result){
+            // continue...
+            S3FS_PRN_DBG("Put Request(%s) returns with errno(%d)", path.c_str(), thargs.result);
+        }
+        result = thargs.result;
 
         // reset uploaded file size
         size_orgmeta = st.st_size;
@@ -1806,19 +2029,9 @@ int FdEntity::RowFlushStreamMultipart(PseudoFdInfo* pseudo_obj, const char* tpat
             //
             // Multipart uploading hasn't started yet, so start it.
             //
-            S3fsCurl    s3fscurl(true);
-            std::string upload_id;
-            if(0 != (result = s3fscurl.PreMultipartPostRequest(path.c_str(), orgmeta, upload_id, true))){
-                S3FS_PRN_ERR("failed to setup multipart upload(create upload id) by errno(%d)", result);
+            if(0 != (result = PreMultipartPostRequest(pseudo_obj, true))){
                 return result;
             }
-            if(!pseudo_obj->InitialUploadInfo(upload_id)){
-                S3FS_PRN_ERR("failed to setup multipart upload(set upload id to object)");
-                return -EIO;
-            }
-
-            // Clear the dirty flag, because the meta data is updated.
-            pending_status = pending_status_t::NO_UPDATE_PENDING;
         }
 
         //
@@ -1872,30 +2085,26 @@ int FdEntity::RowFlushStreamMultipart(PseudoFdInfo* pseudo_obj, const char* tpat
         // Complete uploading
         //
         std::string upload_id;
-        etaglist_t  etaglist;
-        if(!pseudo_obj->GetUploadId(upload_id) || !pseudo_obj->GetEtaglist(etaglist)){
+        etaglist_t  parts;
+        if(!pseudo_obj->GetUploadId(upload_id) || !pseudo_obj->GetEtaglist(parts)){
             S3FS_PRN_ERR("There is no upload id or etag list.");
             untreated_list.ClearAll();
             pseudo_obj->ClearUploadInfo();     // clear multipart upload info
             return -EIO;
         }else{
-            S3fsCurl s3fscurl(true);
-            result = s3fscurl.CompleteMultipartPostRequest(path.c_str(), upload_id, etaglist);
-            s3fscurl.DestroyCurlHandle();
-            if(0 != result){
-                S3FS_PRN_ERR("failed to complete multipart upload by errno(%d)", result);
+            if(0 != (result = complete_multipart_post_request(path, upload_id, parts))){
+                S3FS_PRN_ERR("failed to complete multipart post by errno(%d)", result);
                 untreated_list.ClearAll();
                 pseudo_obj->ClearUploadInfo(); // clear multipart upload info
 
-                S3fsCurl s3fscurl_abort(true);
-                int result2 = s3fscurl.AbortMultipartUpload(path.c_str(), upload_id);
-                s3fscurl_abort.DestroyCurlHandle();
-                if(0 != result2){
+                int result2;
+                if(0 != (result2 = abort_multipart_upload_request(path, upload_id))){
                     S3FS_PRN_ERR("failed to abort multipart upload by errno(%d)", result2);
                 }
                 return result;
             }
         }
+
         untreated_list.ClearAll();
         pseudo_obj->ClearUploadInfo();         // clear multipart upload info
 

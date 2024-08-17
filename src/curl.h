@@ -288,7 +288,7 @@ class S3fsCurl
         static bool InitMimeType(const std::string& strFile);
         static bool DestroyS3fsCurl();
         static std::unique_ptr<S3fsCurl> CreateParallelS3fsCurl(const char* tpath, int fd, off_t start, off_t size, int part_num, bool is_copy, etagpair* petag, const std::string& upload_id, int& result);
-        static int ParallelMultipartUploadRequest(const char* tpath, headers_t& meta, int fd);
+        static int ParallelMultipartUploadRequest(const char* tpath, const headers_t& meta, int fd);
         static int ParallelMixMultipartUploadRequest(const char* tpath, headers_t& meta, int fd, const fdpage_list_t& mixuppages);
         static int ParallelGetObjectRequest(const char* tpath, int fd, off_t start, off_t size);
 
@@ -375,14 +375,14 @@ class S3fsCurl
           return PreHeadRequest(tpath.c_str(), bpath.c_str(), savedpath.c_str(), ssekey_pos);
         }
         int HeadRequest(const char* tpath, headers_t& meta);
-        int PutHeadRequest(const char* tpath, headers_t& meta, bool is_copy);
+        int PutHeadRequest(const char* tpath, const headers_t& meta, bool is_copy);
         int PutRequest(const char* tpath, headers_t& meta, int fd);
         int PreGetObjectRequest(const char* tpath, int fd, off_t start, off_t size, sse_type_t ssetype, const std::string& ssevalue);
-        int GetObjectRequest(const char* tpath, int fd, off_t start = -1, off_t size = -1);
+        int GetObjectRequest(const char* tpath, int fd, off_t start, off_t size, sse_type_t ssetype, const std::string& ssevalue);
         int CheckBucket(const char* check_path, bool compat_dir, bool force_no_sse);
         int ListBucketRequest(const char* tpath, const char* query);
-        int PreMultipartPostRequest(const char* tpath, headers_t& meta, std::string& upload_id, bool is_copy);
-        int CompleteMultipartPostRequest(const char* tpath, const std::string& upload_id, etaglist_t& parts);
+        int PreMultipartPostRequest(const char* tpath, const headers_t& meta, std::string& upload_id, bool is_copy);
+        int CompleteMultipartPostRequest(const char* tpath, const std::string& upload_id, const etaglist_t& parts);
         int UploadMultipartPostRequest(const char* tpath, int part_num, const std::string& upload_id);
         bool MixMultipartPostComplete();
         int MultipartListRequest(std::string& body);

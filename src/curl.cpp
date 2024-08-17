@@ -39,6 +39,7 @@
 #include "s3fs_util.h"
 #include "string_util.h"
 #include "addhead.h"
+#include "s3fs_threadreqs.h"
 
 //-------------------------------------------------------------------
 // Symbols
@@ -1217,28 +1218,28 @@ bool S3fsCurl::SetIPResolveType(const char* value)
 // cppcheck-suppress unmatchedSuppression
 // cppcheck-suppress constParameter
 // cppcheck-suppress constParameterCallback
-bool S3fsCurl::UploadMultipartPostCallback(S3fsCurl* s3fscurl, void* param)
+bool S3fsCurl::MultipartUploadPartCallback(S3fsCurl* s3fscurl, void* param)
 {
     if(!s3fscurl || param){     // this callback does not need a parameter
         return false;
     }
 
-    return s3fscurl->UploadMultipartPostComplete();
+    return s3fscurl->MultipartUploadPartComplete();
 }
 
 // cppcheck-suppress unmatchedSuppression
 // cppcheck-suppress constParameter
 // cppcheck-suppress constParameterCallback
-bool S3fsCurl::MixMultipartPostCallback(S3fsCurl* s3fscurl, void* param)
+bool S3fsCurl::MixMultipartUploadCallback(S3fsCurl* s3fscurl, void* param)
 {
     if(!s3fscurl || param){     // this callback does not need a parameter
         return false;
     }
 
-    return s3fscurl->MixMultipartPostComplete();
+    return s3fscurl->MixMultipartUploadComplete();
 }
 
-std::unique_ptr<S3fsCurl> S3fsCurl::UploadMultipartPostRetryCallback(S3fsCurl* s3fscurl)
+std::unique_ptr<S3fsCurl> S3fsCurl::MultipartUploadPartRetryCallback(S3fsCurl* s3fscurl)
 {
     if(!s3fscurl){
         return nullptr;
@@ -1278,14 +1279,14 @@ std::unique_ptr<S3fsCurl> S3fsCurl::UploadMultipartPostRetryCallback(S3fsCurl* s
     newcurl->type                = s3fscurl->type;
 
     // setup new curl object
-    if(0 != newcurl->UploadMultipartPostSetup(s3fscurl->path.c_str(), part_num, upload_id)){
+    if(0 != newcurl->MultipartUploadPartSetup(s3fscurl->path.c_str(), part_num, upload_id)){
         S3FS_PRN_ERR("Could not duplicate curl object(%s:%d).", s3fscurl->path.c_str(), part_num);
         return nullptr;
     }
     return newcurl;
 }
 
-std::unique_ptr<S3fsCurl> S3fsCurl::CopyMultipartPostRetryCallback(S3fsCurl* s3fscurl)
+std::unique_ptr<S3fsCurl> S3fsCurl::CopyMultipartUploadRetryCallback(S3fsCurl* s3fscurl)
 {
     if(!s3fscurl){
         return nullptr;
@@ -1322,23 +1323,23 @@ std::unique_ptr<S3fsCurl> S3fsCurl::CopyMultipartPostRetryCallback(S3fsCurl* s3f
     newcurl->type                = s3fscurl->type;
 
     // setup new curl object
-    if(0 != newcurl->CopyMultipartPostSetup(s3fscurl->b_from.c_str(), s3fscurl->path.c_str(), part_num, upload_id, s3fscurl->b_meta)){
+    if(0 != newcurl->CopyMultipartUploadSetup(s3fscurl->b_from.c_str(), s3fscurl->path.c_str(), part_num, upload_id, s3fscurl->b_meta)){
         S3FS_PRN_ERR("Could not duplicate curl object(%s:%d).", s3fscurl->path.c_str(), part_num);
         return nullptr;
     }
     return newcurl;
 }
 
-std::unique_ptr<S3fsCurl> S3fsCurl::MixMultipartPostRetryCallback(S3fsCurl* s3fscurl)
+std::unique_ptr<S3fsCurl> S3fsCurl::MixMultipartUploadRetryCallback(S3fsCurl* s3fscurl)
 {
     if(!s3fscurl){
         return nullptr;
     }
 
     if(-1 == s3fscurl->partdata.fd){
-        return S3fsCurl::CopyMultipartPostRetryCallback(s3fscurl);
+        return S3fsCurl::CopyMultipartUploadRetryCallback(s3fscurl);
     }else{
-        return S3fsCurl::UploadMultipartPostRetryCallback(s3fscurl);
+        return S3fsCurl::MultipartUploadPartRetryCallback(s3fscurl);
     }
 }
 
@@ -1396,7 +1397,7 @@ std::unique_ptr<S3fsCurl> S3fsCurl::CreateParallelS3fsCurl(const char* tpath, in
 
         S3FS_PRN_INFO3("Upload Part [tpath=%s][start=%lld][size=%lld][part=%d]", SAFESTRPTR(tpath), static_cast<long long>(start), static_cast<long long>(size), part_num);
 
-        if(0 != (result = s3fscurl->UploadMultipartPostSetup(tpath, part_num, upload_id))){
+        if(0 != (result = s3fscurl->MultipartUploadPartSetup(tpath, part_num, upload_id))){
             S3FS_PRN_ERR("failed uploading part setup(%d)", result);
             return nullptr;
         }
@@ -1417,7 +1418,7 @@ std::unique_ptr<S3fsCurl> S3fsCurl::CreateParallelS3fsCurl(const char* tpath, in
 
         S3FS_PRN_INFO3("Copy Part [tpath=%s][start=%lld][size=%lld][part=%d]", SAFESTRPTR(tpath), static_cast<long long>(start), static_cast<long long>(size), part_num);
 
-        if(0 != (result = s3fscurl->CopyMultipartPostSetup(tpath, tpath, part_num, upload_id, meta))){
+        if(0 != (result = s3fscurl->CopyMultipartUploadSetup(tpath, tpath, part_num, upload_id, meta))){
             S3FS_PRN_ERR("failed uploading part setup(%d)", result);
             return nullptr;
         }
@@ -1432,14 +1433,13 @@ std::unique_ptr<S3fsCurl> S3fsCurl::CreateParallelS3fsCurl(const char* tpath, in
     return s3fscurl;
 }
 
-int S3fsCurl::ParallelMultipartUploadRequest(const char* tpath, headers_t& meta, int fd)
+int S3fsCurl::ParallelMultipartUploadRequest(const char* tpath, const headers_t& meta, int fd)
 {
     int            result;
     std::string    upload_id;
     struct stat    st;
     etaglist_t     list;
     off_t          remaining_bytes;
-    S3fsCurl       s3fscurl(true);
 
     S3FS_PRN_INFO3("[tpath=%s][fd=%d]", SAFESTRPTR(tpath), fd);
 
@@ -1448,15 +1448,14 @@ int S3fsCurl::ParallelMultipartUploadRequest(const char* tpath, headers_t& meta,
         return -errno;
     }
 
-    if(0 != (result = s3fscurl.PreMultipartPostRequest(tpath, meta, upload_id, false))){
+    if(0 != (result = pre_multipart_upload_request(std::string(tpath), meta, false, upload_id))){
         return result;
     }
-    s3fscurl.DestroyCurlHandle();
 
     // Initialize S3fsMultiCurl
     S3fsMultiCurl curlmulti(GetMaxParallelCount());
-    curlmulti.SetSuccessCallback(S3fsCurl::UploadMultipartPostCallback);
-    curlmulti.SetRetryCallback(S3fsCurl::UploadMultipartPostRetryCallback);
+    curlmulti.SetSuccessCallback(S3fsCurl::MultipartUploadPartCallback);
+    curlmulti.SetRetryCallback(S3fsCurl::MultipartUploadPartRetryCallback);
 
     // cycle through open fd, pulling off 10MB chunks at a time
     for(remaining_bytes = st.st_size; 0 < remaining_bytes; ){
@@ -1472,7 +1471,7 @@ int S3fsCurl::ParallelMultipartUploadRequest(const char* tpath, headers_t& meta,
         s3fscurl_para->partdata.add_etag_list(list);
 
         // initiate upload part for parallel
-        if(0 != (result = s3fscurl_para->UploadMultipartPostSetup(tpath, s3fscurl_para->partdata.get_part_number(), upload_id))){
+        if(0 != (result = s3fscurl_para->MultipartUploadPartSetup(tpath, s3fscurl_para->partdata.get_part_number(), upload_id))){
             S3FS_PRN_ERR("failed uploading part setup(%d)", result);
             return result;
         }
@@ -1488,18 +1487,14 @@ int S3fsCurl::ParallelMultipartUploadRequest(const char* tpath, headers_t& meta,
     // Multi request
     if(0 != (result = curlmulti.Request())){
         S3FS_PRN_ERR("error occurred in multi request(errno=%d).", result);
-
-        S3fsCurl s3fscurl_abort(true);
-        int result2 = s3fscurl_abort.AbortMultipartUpload(tpath, upload_id);
-        s3fscurl_abort.DestroyCurlHandle();
-        if(result2 != 0){
+        int result2;
+        if(0 != (result2 = abort_multipart_upload_request(std::string(tpath), upload_id))){
             S3FS_PRN_ERR("error aborting multipart upload(errno=%d).", result2);
         }
-
         return result;
     }
 
-    if(0 != (result = s3fscurl.CompleteMultipartPostRequest(tpath, upload_id, list))){
+    if(0 != (result = complete_multipart_upload_request(std::string(tpath), upload_id, list))){
         return result;
     }
     return 0;
@@ -1511,7 +1506,6 @@ int S3fsCurl::ParallelMixMultipartUploadRequest(const char* tpath, headers_t& me
     std::string    upload_id;
     struct stat    st;
     etaglist_t     list;
-    S3fsCurl       s3fscurl(true);
 
     S3FS_PRN_INFO3("[tpath=%s][fd=%d]", SAFESTRPTR(tpath), fd);
 
@@ -1520,10 +1514,9 @@ int S3fsCurl::ParallelMixMultipartUploadRequest(const char* tpath, headers_t& me
         return -errno;
     }
 
-    if(0 != (result = s3fscurl.PreMultipartPostRequest(tpath, meta, upload_id, true))){
+    if(0 != (result = pre_multipart_upload_request(std::string(tpath), meta, true, upload_id))){
         return result;
     }
-    s3fscurl.DestroyCurlHandle();
 
     // for copy multipart
     std::string srcresource;
@@ -1534,8 +1527,8 @@ int S3fsCurl::ParallelMixMultipartUploadRequest(const char* tpath, headers_t& me
 
     // Initialize S3fsMultiCurl
     S3fsMultiCurl curlmulti(GetMaxParallelCount());
-    curlmulti.SetSuccessCallback(S3fsCurl::MixMultipartPostCallback);
-    curlmulti.SetRetryCallback(S3fsCurl::MixMultipartPostRetryCallback);
+    curlmulti.SetSuccessCallback(S3fsCurl::MixMultipartUploadCallback);
+    curlmulti.SetRetryCallback(S3fsCurl::MixMultipartUploadRetryCallback);
 
     for(fdpage_list_t::const_iterator iter = mixuppages.begin(); iter != mixuppages.end(); ++iter){
         if(iter->modified){
@@ -1551,7 +1544,7 @@ int S3fsCurl::ParallelMixMultipartUploadRequest(const char* tpath, headers_t& me
             S3FS_PRN_INFO3("Upload Part [tpath=%s][start=%lld][size=%lld][part=%d]", SAFESTRPTR(tpath), static_cast<long long>(iter->offset), static_cast<long long>(iter->bytes), s3fscurl_para->partdata.get_part_number());
 
             // initiate upload part for parallel
-            if(0 != (result = s3fscurl_para->UploadMultipartPostSetup(tpath, s3fscurl_para->partdata.get_part_number(), upload_id))){
+            if(0 != (result = s3fscurl_para->MultipartUploadPartSetup(tpath, s3fscurl_para->partdata.get_part_number(), upload_id))){
                 S3FS_PRN_ERR("failed uploading part setup(%d)", result);
                 return result;
             }
@@ -1589,7 +1582,7 @@ int S3fsCurl::ParallelMixMultipartUploadRequest(const char* tpath, headers_t& me
                 S3FS_PRN_INFO3("Copy Part [tpath=%s][start=%lld][size=%lld][part=%d]", SAFESTRPTR(tpath), static_cast<long long>(iter->offset + i), static_cast<long long>(bytes), s3fscurl_para->partdata.get_part_number());
 
                 // initiate upload part for parallel
-                if(0 != (result = s3fscurl_para->CopyMultipartPostSetup(tpath, tpath, s3fscurl_para->partdata.get_part_number(), upload_id, meta))){
+                if(0 != (result = s3fscurl_para->CopyMultipartUploadSetup(tpath, tpath, s3fscurl_para->partdata.get_part_number(), upload_id, meta))){
                     S3FS_PRN_ERR("failed uploading part setup(%d)", result);
                     return result;
                 }
@@ -1606,17 +1599,14 @@ int S3fsCurl::ParallelMixMultipartUploadRequest(const char* tpath, headers_t& me
     // Multi request
     if(0 != (result = curlmulti.Request())){
         S3FS_PRN_ERR("error occurred in multi request(errno=%d).", result);
-
-        S3fsCurl s3fscurl_abort(true);
-        int result2 = s3fscurl_abort.AbortMultipartUpload(tpath, upload_id);
-        s3fscurl_abort.DestroyCurlHandle();
-        if(result2 != 0){
+        int result2;
+        if(0 != (result2 = abort_multipart_upload_request(std::string(tpath), upload_id))){
             S3FS_PRN_ERR("error aborting multipart upload(errno=%d).", result2);
         }
         return result;
     }
 
-    if(0 != (result = s3fscurl.CompleteMultipartPostRequest(tpath, upload_id, list))){
+    if(0 != (result = complete_multipart_upload_request(std::string(tpath), upload_id, list))){
         return result;
     }
     return 0;
@@ -1699,7 +1689,7 @@ int S3fsCurl::ParallelGetObjectRequest(const char* tpath, int fd, off_t start, o
     return result;
 }
 
-bool S3fsCurl::UploadMultipartPostSetCurlOpts(S3fsCurl* s3fscurl)
+bool S3fsCurl::MultipartUploadPartSetCurlOpts(S3fsCurl* s3fscurl)
 {
     if(!s3fscurl){
         return false;
@@ -1741,7 +1731,7 @@ bool S3fsCurl::UploadMultipartPostSetCurlOpts(S3fsCurl* s3fscurl)
     return true;
 }
 
-bool S3fsCurl::CopyMultipartPostSetCurlOpts(S3fsCurl* s3fscurl)
+bool S3fsCurl::CopyMultipartUploadSetCurlOpts(S3fsCurl* s3fscurl)
 {
     if(!s3fscurl){
         return false;
@@ -3416,7 +3406,7 @@ int S3fsCurl::HeadRequest(const char* tpath, headers_t& meta)
     return 0;
 }
 
-int S3fsCurl::PutHeadRequest(const char* tpath, headers_t& meta, bool is_copy)
+int S3fsCurl::PutHeadRequest(const char* tpath, const headers_t& meta, bool is_copy)
 {
     S3FS_PRN_INFO3("[tpath=%s]", SAFESTRPTR(tpath));
 
@@ -3440,7 +3430,7 @@ int S3fsCurl::PutHeadRequest(const char* tpath, headers_t& meta, bool is_copy)
     requestHeaders      = curl_slist_sort_insert(requestHeaders, "Content-Type", contype.c_str());
 
     // Make request headers
-    for(headers_t::iterator iter = meta.begin(); iter != meta.end(); ++iter){
+    for(headers_t::const_iterator iter = meta.begin(); iter != meta.end(); ++iter){
         std::string key   = lower(iter->first);
         std::string value = iter->second;
         if(is_prefix(key.c_str(), "x-amz-acl")){
@@ -3704,22 +3694,17 @@ int S3fsCurl::PreGetObjectRequest(const char* tpath, int fd, off_t start, off_t 
     return 0;
 }
 
-int S3fsCurl::GetObjectRequest(const char* tpath, int fd, off_t start, off_t size)
+int S3fsCurl::GetObjectRequest(const char* tpath, int fd, off_t start, off_t size, sse_type_t ssetype, const std::string& ssevalue)
 {
     int result;
 
-    S3FS_PRN_INFO3("[tpath=%s][start=%lld][size=%lld]", SAFESTRPTR(tpath), static_cast<long long>(start), static_cast<long long>(size));
+    S3FS_PRN_INFO3("[tpath=%s][start=%lld][size=%lld][ssetype=%u][ssevalue=%s]", SAFESTRPTR(tpath), static_cast<long long>(start), static_cast<long long>(size), static_cast<uint8_t>(ssetype), ssevalue.c_str());
 
     if(!tpath){
         return -EINVAL;
     }
-    sse_type_t local_ssetype = sse_type_t::SSE_DISABLE;
-    std::string ssevalue;
-    if(!get_object_sse_type(tpath, local_ssetype, ssevalue)){
-        S3FS_PRN_WARN("Failed to get SSE type for file(%s).", SAFESTRPTR(tpath));
-    }
 
-    if(0 != (result = PreGetObjectRequest(tpath, fd, start, size, local_ssetype, ssevalue))){
+    if(0 != (result = PreGetObjectRequest(tpath, fd, start, size, ssetype, ssevalue))){
         return result;
     }
     if(!fpLazySetup || !fpLazySetup(this)){
@@ -3878,7 +3863,7 @@ int S3fsCurl::ListBucketRequest(const char* tpath, const char* query)
 //   Date: Mon, 1 Nov 2010 20:34:56 GMT
 //   Authorization: AWS VGhpcyBtZXNzYWdlIHNpZ25lZCBieSBlbHZpbmc=
 //
-int S3fsCurl::PreMultipartPostRequest(const char* tpath, headers_t& meta, std::string& upload_id, bool is_copy)
+int S3fsCurl::PreMultipartUploadRequest(const char* tpath, const headers_t& meta, std::string& upload_id, bool is_copy)
 {
     S3FS_PRN_INFO3("[tpath=%s]", SAFESTRPTR(tpath));
 
@@ -3902,7 +3887,7 @@ int S3fsCurl::PreMultipartPostRequest(const char* tpath, headers_t& meta, std::s
 
     std::string contype = S3fsCurl::LookupMimeType(tpath);
 
-    for(headers_t::iterator iter = meta.begin(); iter != meta.end(); ++iter){
+    for(headers_t::const_iterator iter = meta.begin(); iter != meta.end(); ++iter){
         std::string key   = lower(iter->first);
         std::string value = iter->second;
         if(is_prefix(key.c_str(), "x-amz-acl")){
@@ -3981,7 +3966,7 @@ int S3fsCurl::PreMultipartPostRequest(const char* tpath, headers_t& meta, std::s
     return 0;
 }
 
-int S3fsCurl::CompleteMultipartPostRequest(const char* tpath, const std::string& upload_id, etaglist_t& parts)
+int S3fsCurl::MultipartUploadComplete(const char* tpath, const std::string& upload_id, const etaglist_t& parts)
 {
     S3FS_PRN_INFO3("[tpath=%s][parts=%zu]", SAFESTRPTR(tpath), parts.size());
 
@@ -3992,7 +3977,7 @@ int S3fsCurl::CompleteMultipartPostRequest(const char* tpath, const std::string&
     // make contents
     std::string postContent;
     postContent += "<CompleteMultipartUpload>\n";
-    for(etaglist_t::iterator it = parts.begin(); it != parts.end(); ++it){
+    for(etaglist_t::const_iterator it = parts.begin(); it != parts.end(); ++it){
         if(it->etag.empty()){
             S3FS_PRN_ERR("%d file part is not finished uploading.", it->part_num);
             return -EIO;
@@ -4189,7 +4174,7 @@ int S3fsCurl::AbortMultipartUpload(const char* tpath, const std::string& upload_
 // Content-MD5: pUNXr/BjKK5G2UKvaRRrOA==
 // Authorization: AWS VGhpcyBtZXNzYWdlIHNpZ25lZGGieSRlbHZpbmc=
 //
-int S3fsCurl::UploadMultipartPostSetup(const char* tpath, int part_num, const std::string& upload_id)
+int S3fsCurl::MultipartUploadPartSetup(const char* tpath, int part_num, const std::string& upload_id)
 {
     S3FS_PRN_INFO3("[tpath=%s][start=%lld][size=%lld][part=%d]", SAFESTRPTR(tpath), static_cast<long long int>(partdata.startpos), static_cast<long long int>(partdata.size), part_num);
 
@@ -4244,30 +4229,30 @@ int S3fsCurl::UploadMultipartPostSetup(const char* tpath, int part_num, const st
     type = REQTYPE::UPLOADMULTIPOST;
 
     // set lazy function
-    fpLazySetup = UploadMultipartPostSetCurlOpts;
+    fpLazySetup = MultipartUploadPartSetCurlOpts;
 
     return 0;
 }
 
-int S3fsCurl::UploadMultipartPostRequest(const char* tpath, int part_num, const std::string& upload_id)
+int S3fsCurl::MultipartUploadPartRequest(const char* tpath, int part_num, const std::string& upload_id)
 {
     int result;
 
     S3FS_PRN_INFO3("[tpath=%s][start=%lld][size=%lld][part=%d]", SAFESTRPTR(tpath), static_cast<long long int>(partdata.startpos), static_cast<long long int>(partdata.size), part_num);
 
     // setup
-    if(0 != (result = S3fsCurl::UploadMultipartPostSetup(tpath, part_num, upload_id))){
+    if(0 != (result = S3fsCurl::MultipartUploadPartSetup(tpath, part_num, upload_id))){
         return result;
     }
 
     if(!fpLazySetup || !fpLazySetup(this)){
-        S3FS_PRN_ERR("Failed to lazy setup in multipart upload post request.");
+        S3FS_PRN_ERR("Failed to lazy setup in multipart upload upload request.");
         return -EIO;
     }
 
     // request
     if(0 == (result = RequestPerform())){
-        if(!UploadMultipartPostComplete()){
+        if(!MultipartUploadPartComplete()){
             result = -EIO;
         }
     }
@@ -4279,7 +4264,7 @@ int S3fsCurl::UploadMultipartPostRequest(const char* tpath, int part_num, const 
     return result;
 }
 
-int S3fsCurl::CopyMultipartPostSetup(const char* from, const char* to, int part_num, const std::string& upload_id, headers_t& meta)
+int S3fsCurl::CopyMultipartUploadSetup(const char* from, const char* to, int part_num, const std::string& upload_id, headers_t& meta)
 {
     S3FS_PRN_INFO3("[from=%s][to=%s][part=%d]", SAFESTRPTR(from), SAFESTRPTR(to), part_num);
 
@@ -4337,7 +4322,7 @@ int S3fsCurl::CopyMultipartPostSetup(const char* from, const char* to, int part_
     type = REQTYPE::COPYMULTIPOST;
 
     // set lazy function
-    fpLazySetup = CopyMultipartPostSetCurlOpts;
+    fpLazySetup = CopyMultipartUploadSetCurlOpts;
 
     // request
     S3FS_PRN_INFO3("copying... [from=%s][to=%s][part=%d]", from, to, part_num);
@@ -4345,7 +4330,7 @@ int S3fsCurl::CopyMultipartPostSetup(const char* from, const char* to, int part_
     return 0;
 }
 
-bool S3fsCurl::UploadMultipartPostComplete()
+bool S3fsCurl::MultipartUploadPartComplete()
 {
     headers_t::iterator it = responseHeaders.find("ETag");
     if (it == responseHeaders.end()) {
@@ -4374,7 +4359,7 @@ bool S3fsCurl::UploadMultipartPostComplete()
 // cppcheck-suppress unmatchedSuppression
 // cppcheck-suppress constParameter
 // cppcheck-suppress constParameterCallback
-bool S3fsCurl::CopyMultipartPostCallback(S3fsCurl* s3fscurl, void* param)
+bool S3fsCurl::CopyMultipartUploadCallback(S3fsCurl* s3fscurl, void* param)
 {
     if(!s3fscurl || param){     // this callback does not need a parameter
         return false;
@@ -4382,10 +4367,10 @@ bool S3fsCurl::CopyMultipartPostCallback(S3fsCurl* s3fscurl, void* param)
 
     // cppcheck-suppress unmatchedSuppression
     // cppcheck-suppress knownConditionTrueFalse
-    return s3fscurl->CopyMultipartPostComplete();
+    return s3fscurl->CopyMultipartUploadComplete();
 }
 
-bool S3fsCurl::CopyMultipartPostComplete()
+bool S3fsCurl::CopyMultipartUploadComplete()
 {
     std::string etag;
     partdata.uploaded = simple_parse_xml(bodydata.c_str(), bodydata.size(), "ETag", etag);
@@ -4397,13 +4382,13 @@ bool S3fsCurl::CopyMultipartPostComplete()
     return true;
 }
 
-bool S3fsCurl::MixMultipartPostComplete()
+bool S3fsCurl::MixMultipartUploadComplete()
 {
     bool result;
     if(-1 == partdata.fd){
-        result = CopyMultipartPostComplete();
+        result = CopyMultipartUploadComplete();
     }else{
-        result = UploadMultipartPostComplete();
+        result = MultipartUploadPartComplete();
     }
     return result;
 }
@@ -4418,15 +4403,15 @@ int S3fsCurl::MultipartHeadRequest(const char* tpath, off_t size, headers_t& met
 
     S3FS_PRN_INFO3("[tpath=%s]", SAFESTRPTR(tpath));
 
-    if(0 != (result = PreMultipartPostRequest(tpath, meta, upload_id, is_copy))){
+    if(0 != (result = PreMultipartUploadRequest(tpath, meta, upload_id, is_copy))){
         return result;
     }
     DestroyCurlHandle();
 
     // Initialize S3fsMultiCurl
     S3fsMultiCurl curlmulti(GetMaxParallelCount());
-    curlmulti.SetSuccessCallback(S3fsCurl::CopyMultipartPostCallback);
-    curlmulti.SetRetryCallback(S3fsCurl::CopyMultipartPostRetryCallback);
+    curlmulti.SetSuccessCallback(S3fsCurl::CopyMultipartUploadCallback);
+    curlmulti.SetRetryCallback(S3fsCurl::CopyMultipartUploadRetryCallback);
 
     for(bytes_remaining = size, chunk = 0; 0 < bytes_remaining; bytes_remaining -= chunk){
         chunk = bytes_remaining > GetMultipartCopySize() ? GetMultipartCopySize() : bytes_remaining;
@@ -4442,7 +4427,7 @@ int S3fsCurl::MultipartHeadRequest(const char* tpath, off_t size, headers_t& met
         s3fscurl_para->partdata.add_etag_list(list);
 
         // initiate upload part for parallel
-        if(0 != (result = s3fscurl_para->CopyMultipartPostSetup(tpath, tpath, s3fscurl_para->partdata.get_part_number(), upload_id, meta))){
+        if(0 != (result = s3fscurl_para->CopyMultipartUploadSetup(tpath, tpath, s3fscurl_para->partdata.get_part_number(), upload_id, meta))){
             S3FS_PRN_ERR("failed uploading part setup(%d)", result);
             return result;
         }
@@ -4457,17 +4442,14 @@ int S3fsCurl::MultipartHeadRequest(const char* tpath, off_t size, headers_t& met
     // Multi request
     if(0 != (result = curlmulti.Request())){
         S3FS_PRN_ERR("error occurred in multi request(errno=%d).", result);
-
-        S3fsCurl s3fscurl_abort(true);
-        int result2 = s3fscurl_abort.AbortMultipartUpload(tpath, upload_id);
-        s3fscurl_abort.DestroyCurlHandle();
-        if(result2 != 0){
+        int result2;
+        if(0 != (result2 = abort_multipart_upload_request(std::string(tpath), upload_id))){
             S3FS_PRN_ERR("error aborting multipart upload(errno=%d).", result2);
         }
         return result;
     }
 
-    if(0 != (result = CompleteMultipartPostRequest(tpath, upload_id, list))){
+    if(0 != (result = MultipartUploadComplete(tpath, upload_id, list))){
         return result;
     }
     return 0;
@@ -4487,7 +4469,7 @@ int S3fsCurl::MultipartUploadRequest(const std::string& upload_id, const char* t
 
     // upload part
     int   result;
-    if(0 != (result = UploadMultipartPostRequest(tpath, petagpair->part_num, upload_id))){
+    if(0 != (result = MultipartUploadPartRequest(tpath, petagpair->part_num, upload_id))){
         S3FS_PRN_ERR("failed uploading %d part by error(%d)", petagpair->part_num, result);
         return result;
     }
@@ -4513,15 +4495,15 @@ int S3fsCurl::MultipartRenameRequest(const char* from, const char* to, headers_t
     meta["Content-Type"]      = S3fsCurl::LookupMimeType(to);
     meta["x-amz-copy-source"] = srcresource;
 
-    if(0 != (result = PreMultipartPostRequest(to, meta, upload_id, true))){
+    if(0 != (result = PreMultipartUploadRequest(to, meta, upload_id, true))){
         return result;
     }
     DestroyCurlHandle();
 
     // Initialize S3fsMultiCurl
     S3fsMultiCurl curlmulti(GetMaxParallelCount());
-    curlmulti.SetSuccessCallback(S3fsCurl::CopyMultipartPostCallback);
-    curlmulti.SetRetryCallback(S3fsCurl::CopyMultipartPostRetryCallback);
+    curlmulti.SetSuccessCallback(S3fsCurl::CopyMultipartUploadCallback);
+    curlmulti.SetRetryCallback(S3fsCurl::CopyMultipartUploadRetryCallback);
 
     for(bytes_remaining = size, chunk = 0; 0 < bytes_remaining; bytes_remaining -= chunk){
         chunk = bytes_remaining > GetMultipartCopySize() ? GetMultipartCopySize() : bytes_remaining;
@@ -4537,7 +4519,7 @@ int S3fsCurl::MultipartRenameRequest(const char* from, const char* to, headers_t
         s3fscurl_para->partdata.add_etag_list(list);
 
         // initiate upload part for parallel
-        if(0 != (result = s3fscurl_para->CopyMultipartPostSetup(from, to, s3fscurl_para->partdata.get_part_number(), upload_id, meta))){
+        if(0 != (result = s3fscurl_para->CopyMultipartUploadSetup(from, to, s3fscurl_para->partdata.get_part_number(), upload_id, meta))){
             S3FS_PRN_ERR("failed uploading part setup(%d)", result);
             return result;
         }
@@ -4552,17 +4534,14 @@ int S3fsCurl::MultipartRenameRequest(const char* from, const char* to, headers_t
     // Multi request
     if(0 != (result = curlmulti.Request())){
         S3FS_PRN_ERR("error occurred in multi request(errno=%d).", result);
-
-        S3fsCurl s3fscurl_abort(true);
-        int result2 = s3fscurl_abort.AbortMultipartUpload(to, upload_id);
-        s3fscurl_abort.DestroyCurlHandle();
-        if(result2 != 0){
+        int result2;
+        if(0 != (result2 = abort_multipart_upload_request(std::string(to), upload_id))){
             S3FS_PRN_ERR("error aborting multipart upload(errno=%d).", result2);
         }
         return result;
     }
 
-    if(0 != (result = CompleteMultipartPostRequest(to, upload_id, list))){
+    if(0 != (result = MultipartUploadComplete(to, upload_id, list))){
         return result;
     }
     return 0;

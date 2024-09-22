@@ -28,6 +28,7 @@
 #include <sys/stat.h>
 
 #include "common.h"
+#include "s3fs.h"
 #include "fdcache_entity.h"
 #include "fdcache_stat.h"
 #include "fdcache_untreated.h"

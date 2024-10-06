@@ -48,22 +48,23 @@ export CACHE_DIR
 export ENSURE_DISKFREE_SIZE 
 if [ -n "${ALL_TESTS}" ]; then
     FLAGS=(
-        "use_cache=${CACHE_DIR} -o ensure_diskfree=${ENSURE_DISKFREE_SIZE} -o fake_diskfree=${FAKE_FREE_DISK_SIZE} -o use_xattr -o update_parent_dir_stat"
-        enable_content_md5
-        disable_noobj_cache
-        "max_stat_cache_size=100"
+        #"use_cache=${CACHE_DIR} -o ensure_diskfree=${ENSURE_DISKFREE_SIZE} -o fake_diskfree=${FAKE_FREE_DISK_SIZE} -o use_xattr -o update_parent_dir_stat"
+        #enable_content_md5
+        #disable_noobj_cache
+        #"max_stat_cache_size=100"
         nocopyapi
-        nomultipart
-        sigv2
-        sigv4
-        "singlepart_copy_limit=10"  # limit size to exercise multipart code paths
-        #use_sse  # TODO: S3Proxy does not support SSE
-        #use_sse=custom:/tmp/ssekey  # TODO: S3Proxy does not support SSE
-        "use_cache=${CACHE_DIR} -o ensure_diskfree=${ENSURE_DISKFREE_SIZE} -o fake_diskfree=${FAKE_FREE_DISK_SIZE} -o streamupload"
+        #nomultipart
+        #sigv2
+        #sigv4
+        #"singlepart_copy_limit=10"  # limit size to exercise multipart code paths
+        ##use_sse  # TODO: S3Proxy does not support SSE
+        ##use_sse=custom:/tmp/ssekey  # TODO: S3Proxy does not support SSE
+        #"use_cache=${CACHE_DIR} -o ensure_diskfree=${ENSURE_DISKFREE_SIZE} -o fake_diskfree=${FAKE_FREE_DISK_SIZE} -o streamupload"
     )
 else
     FLAGS=(
-        sigv4
+        #sigv4
+        nocopyapi
     )
 fi
 

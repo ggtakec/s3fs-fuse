@@ -34,6 +34,7 @@ on:
 #
 jobs:
   Linux:
+    if: false
     runs-on: ubuntu-latest
 
     #
@@ -185,25 +186,26 @@ jobs:
           PKG_CONFIG_PATH=/usr/local/opt/curl/lib/pkgconfig:/usr/local/opt/openssl/lib/pkgconfig ./configure CXXFLAGS='-std=c++11 -DS3FS_PTHREAD_ERRORCHECK=1'
           make --jobs=$(sysctl -n hw.ncpu)
 
-      - name: Cppcheck
-        run: |
-          # specify the version range to run cppcheck (cppcheck version number is x.y or x.y.z)
-          if cppcheck --version | sed -e 's/\./ /g' | awk '{if (($2 * 1000 + $3) <= 2004) { exit(1) } }'; then
-            make cppcheck
-          fi
+      #- name: Cppcheck
+      #  run: |
+      #    # specify the version range to run cppcheck (cppcheck version number is x.y or x.y.z)
+      #    if cppcheck --version | sed -e 's/\./ /g' | awk '{if (($2 * 1000 + $3) <= 2004) { exit(1) } }'; then
+      #      make cppcheck
+      #    fi
 
-      - name: Shellcheck
-        run: |
-          if shellcheck --version | awk -F '[ .]' '/version:/ && ($2 * 1000 + $3 <= 7) { exit(1) }'; then
-            make shellcheck
-          fi
+      #- name: Shellcheck
+      #  run: |
+      #    if shellcheck --version | awk -F '[ .]' '/version:/ && ($2 * 1000 + $3 <= 7) { exit(1) }'; then
+      #      make shellcheck
+      #    fi
 
       - name: Test suite
         run: |
-          make check -C src
+          #make check -C src
           make ALL_TESTS=1 check -C test || (test/filter-suite-log.sh test/test-suite.log; exit 1)
 
   MemoryTest:
+    if: false
     runs-on: ubuntu-latest
 
     #

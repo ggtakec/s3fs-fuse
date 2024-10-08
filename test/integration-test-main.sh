@@ -689,8 +689,10 @@ function test_multipart_mix {
     cp "${TEMP_DIR}/${BIG_FILE}" "${TEMP_DIR}/${BIG_FILE}-mix"
     cp "${BIG_FILE}" "${BIG_FILE}-mix"
 
+wait_ostype 1 "Darwin"
     echo -n "0123456789ABCDEF" | dd of="${BIG_FILE}-mix" bs=4 count=4 seek=0 conv=notrunc
     echo -n "0123456789ABCDEF" | dd of="${TEMP_DIR}/${BIG_FILE}-mix" bs=4 count=4 seek=0 conv=notrunc
+wait_ostype 1 "Darwin"
 
     # Verify contents of file
     echo "Comparing test file (3)"

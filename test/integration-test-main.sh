@@ -690,9 +690,14 @@ function test_multipart_mix {
     cp "${BIG_FILE}" "${BIG_FILE}-mix"
 
 wait_ostype 1 "Darwin"
+_TMP_SIZE=$(get_size "${TEMP_DIR}/${BIG_FILE}-mix")
+echo "#### BEFORE SIZE = ${_TMP_SIZE}"
+
     echo -n "0123456789ABCDEF" | dd of="${BIG_FILE}-mix" bs=4 count=4 seek=0 conv=notrunc
     echo -n "0123456789ABCDEF" | dd of="${TEMP_DIR}/${BIG_FILE}-mix" bs=4 count=4 seek=0 conv=notrunc
 wait_ostype 1 "Darwin"
+_TMP_SIZE=$(get_size "${TEMP_DIR}/${BIG_FILE}-mix")
+echo "#### AFTER SIZE = ${_TMP_SIZE}"
 
     # Verify contents of file
     echo "Comparing test file (3)"

@@ -114,7 +114,9 @@ void S3fsSignals::CheckCacheWorker(Semaphore* pSem)
 
         // do not allow request queuing
         for(int value = pSem->get_value(); 0 < value; value = pSem->get_value()){
-            pSem->wait();
+            if(!pSem->try_wait()){
+                break;
+            }
         }
     }
 }

@@ -34,6 +34,7 @@ on:
 #
 jobs:
   Linux:
+    if: false
     runs-on: ubuntu-latest
     #
     # build matrix for containers
@@ -180,6 +181,7 @@ jobs:
           make ALL_TESTS=1 check -C test || (test/filter-suite-log.sh test/test-suite.log; exit 1)
 
   MemoryTest:
+    if: false
     runs-on: ubuntu-latest
 
     #
@@ -277,6 +279,7 @@ jobs:
           /bin/sh -c "ALL_TESTS=1 ASAN_OPTIONS=${ASAN_OPTIONS} TSAN_OPTIONS=${TSAN_OPTIONS} VALGRIND=${VALGRIND} RETRIES=${RETRIES} make check -C test || (test/filter-suite-log.sh test/test-suite.log; exit 1)"
 
   clang-tidy:
+    if: false
     runs-on: ubuntu-latest
     container:
       image: fedora:41

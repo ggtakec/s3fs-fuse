@@ -111,8 +111,8 @@ jobs:
   #   This job doesn't work with GitHub Actions using macOS 11+ because "load_osxfuse" returns
   #   "exit code = 1".(requires OS reboot)
   #
-  macos-13:
-    runs-on: macos-13
+  macos-14:
+    runs-on: macos-14
 
     steps:
       - name: Checkout source code
@@ -127,7 +127,10 @@ jobs:
 
       - name: Install fuse-t
         run: |
-          HOMEBREW_NO_AUTO_UPDATE=1 brew install fuse-t
+          # [NOTE]
+          # Install macfuse to install fuse.h and fuse related headers.
+          #
+          HOMEBREW_NO_AUTO_UPDATE=1 brew install macfuse fuse-t
 
       - name: Install brew other packages
         run: |
@@ -146,7 +149,7 @@ jobs:
       - name: Build
         run: |
           ./autogen.sh
-          PKG_CONFIG_PATH=/usr/local/opt/curl/lib/pkgconfig:/usr/local/opt/openssl/lib/pkgconfig ./configure CXXFLAGS='-std=c++11 -DS3FS_PTHREAD_ERRORCHECK=1'
+          PKG_CONFIG_PATH=/usr/local/opt/curl/lib/pkgconfig:/usr/local/opt/openssl/lib/pkgconfig ./configure CXXFLAGS='-std=c++11 -DS3FS_PTHREAD_ERRORCHECK=1 -I/usr/loval/include/fuse'
           make --jobs=$(sysctl -n hw.ncpu)
 
       - name: Cppcheck

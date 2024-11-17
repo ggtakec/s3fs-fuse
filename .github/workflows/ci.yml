@@ -141,7 +141,7 @@ jobs:
 
       - name: Install fuse-t
         run: |
-          HOMEBREW_NO_AUTO_UPDATE=1 brew install fuse-t
+          HOMEBREW_NO_AUTO_UPDATE=1 brew install macfuse fuse-t
 
       - name: Install brew other packages
         run: |

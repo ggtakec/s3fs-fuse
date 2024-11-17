@@ -142,6 +142,8 @@ function retry {
 # PUBLIC=1:     use s3proxy-noauth.conf (no request signing)
 # 
 function start_s3proxy {
+    echo "######### DEBUG : STDBUF_BIN = ${STDBUF_BIN}"
+
     if [ -n "${PUBLIC}" ]; then
         local S3PROXY_CONFIG="s3proxy-noauth.conf"
     else
@@ -290,6 +292,7 @@ function start_s3fs {
     # -f
     #     Keep s3fs in foreground instead of daemonizing
     #
+    echo "######### DEBUG : STDBUF_BIN = ${STDBUF_BIN}"
 
     # subshell with set -x to log exact invocation of s3fs-fuse
     # shellcheck disable=SC2086

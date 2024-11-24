@@ -181,10 +181,10 @@ jobs:
 
       - name: Test suite
         run: |
-          cd test
-          ALL_TESTS=1 ./small-integration-test.sh
+          make check -C src
           make ALL_TESTS=1 check -C test || (test/filter-suite-log.sh test/test-suite.log; exit 1)
-          #make check -C src
+          #cd test
+          #ALL_TESTS=1 ./small-integration-test.sh
           #make ALL_TESTS=1 check -C test || (test/filter-suite-log.sh test/test-suite.log; exit 1)
 
   MemoryTest:

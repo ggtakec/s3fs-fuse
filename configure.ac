@@ -195,14 +195,13 @@ AS_IF(
 dnl
 dnl For PKG_CONFIG before checking nss/gnutls.
 dnl
-###    [PKG_CHECK_MODULES([DEPS], [fuse-t >= ${min_fuse_t_version} libcurl >= 7.0 libxml-2.0 >= 2.6 libcrypto >= 0.9 ])],
 
 AC_MSG_CHECKING([compile s3fs with])
 case "${auth_lib}" in
 openssl)
   AC_MSG_RESULT(OpenSSL)
   AS_IF([test "$found_fuse_t" = "yes"],
-    [PKG_CHECK_MODULES([DEPS], [fuse-t >= ${min_fuse_t_version} libxml-2.0 >= 2.6 libcrypto >= 0.9 ])],
+    [PKG_CHECK_MODULES([DEPS], [fuse-t >= ${min_fuse_t_version} libcurl >= 7.0 libxml-2.0 >= 2.6 libcrypto >= 0.9 ])],
     [PKG_CHECK_MODULES([DEPS], [fuse >= ${min_fuse_version} libcurl >= 7.0 libxml-2.0 >= 2.6 libcrypto >= 0.9 ])])
 
   AC_MSG_CHECKING([openssl 3.0 or later])

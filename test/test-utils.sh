@@ -59,8 +59,8 @@ export RUN_DIR
 # Set your PATH appropriately so that you can find these commands.
 #
 if [ "$(uname)" = "Darwin" ]; then
-#    export STDBUF_BIN="gstdbuf"
-    export STDBUF_BIN="stdbuf"
+    sudo ln -s "$(brew --prefix coreutils)"/libexec/libstdbuf.so "$(brew --prefix coreutils)"/libexec/glibstdbuf.so
+    export STDBUF_BIN="gstdbuf"
     export TRUNCATE_BIN="gtruncate"
     export SED_BIN="gsed"
     export BASE64_BIN="gbase64"

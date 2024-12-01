@@ -176,8 +176,9 @@ function start_s3proxy {
             S3PROXY_CACERT_FILE=""
         fi
 
-        #"${STDBUF_BIN}" -oL -eL java -jar "${S3PROXY_BINARY}" --properties "${S3PROXY_CONFIG}" &
-        java -jar "${S3PROXY_BINARY}" --properties "${S3PROXY_CONFIG}" &
+        "${STDBUF_BIN}" -oL -eL java -jar "${S3PROXY_BINARY}" --properties "${S3PROXY_CONFIG}" &
+        #NG - ORG#"${STDBUF_BIN}" -oL -eL java -jar "${S3PROXY_BINARY}" --properties "${S3PROXY_CONFIG}" &
+        #OK  - NO#java -jar "${S3PROXY_BINARY}" --properties "${S3PROXY_CONFIG}" &
         S3PROXY_PID=$!
 
         # wait for S3Proxy to start
@@ -191,8 +192,9 @@ function start_s3proxy {
             chmod +x "${CHAOS_HTTP_PROXY_BINARY}"
         fi
 
-        #"${STDBUF_BIN}" -oL -eL java -jar "${CHAOS_HTTP_PROXY_BINARY}" --properties chaos-http-proxy.conf &
-        java -jar "${CHAOS_HTTP_PROXY_BINARY}" --properties chaos-http-proxy.conf &
+        "${STDBUF_BIN}" -oL -eL java -jar "${CHAOS_HTTP_PROXY_BINARY}" --properties chaos-http-proxy.conf &
+        #NG - ORG#"${STDBUF_BIN}" -oL -eL java -jar "${CHAOS_HTTP_PROXY_BINARY}" --properties chaos-http-proxy.conf &
+        #OK  - NO#java -jar "${CHAOS_HTTP_PROXY_BINARY}" --properties chaos-http-proxy.conf &
         CHAOS_HTTP_PROXY_PID=$!
 
         # wait for Chaos HTTP Proxy to start
@@ -299,9 +301,10 @@ function start_s3fs {
     # subshell with set -x to log exact invocation of s3fs-fuse
     # shellcheck disable=SC2086
     (
-        ### ${STDBUF_BIN} -oL -eL \ ###
+        #NG - ORG# ${STDBUF_BIN} -oL -eL \ ###
         set -x 
         CURL_CA_BUNDLE="${S3PROXY_CACERT_FILE}" \
+        ${STDBUF_BIN} -oL -eL \
             ${VALGRIND_EXEC} \
             ${S3FS} \
             ${TEST_BUCKET_1} \
@@ -324,8 +327,9 @@ function start_s3fs {
             -f \
             "${@}" &
         echo $! >&3
-    ) 3>pid | "${SED_BIN}" "${SED_BUFFER_FLAG}" "s/^/s3fs: /" &
-    ###) 3>pid | "${STDBUF_BIN}" -oL -eL "${SED_BIN}" "${SED_BUFFER_FLAG}" "s/^/s3fs: /" &
+    ) 3>pid | "${STDBUF_BIN}" -oL -eL "${SED_BIN}" "${SED_BUFFER_FLAG}" "s/^/s3fs: /" &
+    #NG - ORG#) 3>pid | "${STDBUF_BIN}" -oL -eL "${SED_BIN}" "${SED_BUFFER_FLAG}" "s/^/s3fs: /" &
+    #NG -  NO#) 3>pid | "${SED_BIN}" "${SED_BUFFER_FLAG}" "s/^/s3fs: /" &
     sleep 1
     S3FS_PID=$(<pid)
     export S3FS_PID

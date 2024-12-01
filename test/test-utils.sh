@@ -59,7 +59,8 @@ export RUN_DIR
 # Set your PATH appropriately so that you can find these commands.
 #
 if [ "$(uname)" = "Darwin" ]; then
-    export STDBUF_BIN="gstdbuf"
+#    export STDBUF_BIN="gstdbuf"
+    export STDBUF_BIN="stdbuf"
     export TRUNCATE_BIN="gtruncate"
     export SED_BIN="gsed"
     export BASE64_BIN="gbase64"

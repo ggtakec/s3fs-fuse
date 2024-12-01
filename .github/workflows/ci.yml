@@ -181,6 +181,7 @@ jobs:
 
       - name: Test suite
         run: |
+          find ./ -name \*stdbuf 2>/dev/null || echo "error find"
           make check -C src
           make ALL_TESTS=1 check -C test || (test/filter-suite-log.sh test/test-suite.log; exit 1)
           #cd test

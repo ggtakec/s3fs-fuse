@@ -121,7 +121,7 @@ static int create_directory_object(const char* path, mode_t mode, const struct t
 static int rename_object(const char* from, const char* to, bool update_ctime);
 static int rename_object_nocopy(const char* from, const char* to, bool update_ctime);
 static int clone_directory_object(const char* from, const char* to, bool update_ctime, const char* pxattrvalue);
-static int rename_directory(const char* from, const char* to);
+static int rename_directory(const char* from, const char* to, unsigned int flags);
 static int update_mctime_parent_directory(const char* _path);
 static int remote_mountpath_exists(const char* path, bool compat_dir);
 static bool get_meta_xattr_value(const char* path, std::string& rawvalue);
@@ -143,22 +143,22 @@ static int print_umount_message(const std::string& mp, bool force) __attribute__
 //-------------------------------------------------------------------
 // fuse interface functions
 //-------------------------------------------------------------------
-static int s3fs_getattr(const char* path, struct stat* stbuf);
+static int s3fs_getattr(const char* path, struct stat* stbuf, fuse_file_info* info);
 static int s3fs_readlink(const char* path, char* buf, size_t size);
 static int s3fs_mknod(const char* path, mode_t mode, dev_t rdev);
 static int s3fs_mkdir(const char* path, mode_t mode);
 static int s3fs_unlink(const char* path);
 static int s3fs_rmdir(const char* path);
 static int s3fs_symlink(const char* from, const char* to);
-static int s3fs_rename(const char* from, const char* to);
+static int s3fs_rename(const char* from, const char* to, unsigned int flags);
 static int s3fs_link(const char* from, const char* to);
-static int s3fs_chmod(const char* path, mode_t mode);
-static int s3fs_chmod_nocopy(const char* path, mode_t mode);
-static int s3fs_chown(const char* path, uid_t uid, gid_t gid);
-static int s3fs_chown_nocopy(const char* path, uid_t uid, gid_t gid);
-static int s3fs_utimens(const char* path, const struct timespec ts[2]);
-static int s3fs_utimens_nocopy(const char* path, const struct timespec ts[2]);
-static int s3fs_truncate(const char* path, off_t size);
+static int s3fs_chmod(const char* path, mode_t mode, fuse_file_info* info);
+static int s3fs_chmod_nocopy(const char* path, mode_t mode, fuse_file_info* info);
+static int s3fs_chown(const char* path, uid_t uid, gid_t gid, fuse_file_info* info);
+static int s3fs_chown_nocopy(const char* path, uid_t uid, gid_t gid, fuse_file_info* info);
+static int s3fs_utimens(const char* path, const struct timespec ts[2], fuse_file_info* info);
+static int s3fs_utimens_nocopy(const char* path, const struct timespec ts[2], fuse_file_info* info);
+static int s3fs_truncate(const char* path, off_t size, fuse_file_info* info);
 static int s3fs_create(const char* path, mode_t mode, struct fuse_file_info* fi);
 static int s3fs_open(const char* path, struct fuse_file_info* fi);
 static int s3fs_read(const char* path, char* buf, size_t size, off_t offset, struct fuse_file_info* fi);
@@ -168,9 +168,9 @@ static int s3fs_flush(const char* path, struct fuse_file_info* fi);
 static int s3fs_fsync(const char* path, int datasync, struct fuse_file_info* fi);
 static int s3fs_release(const char* path, struct fuse_file_info* fi);
 static int s3fs_opendir(const char* path, struct fuse_file_info* fi);
-static int s3fs_readdir(const char* path, void* buf, fuse_fill_dir_t filler, off_t offset, struct fuse_file_info* fi);
+static int s3fs_readdir(const char* path, void* buf, fuse_fill_dir_t filler, off_t offset, struct fuse_file_info* fi, enum fuse_readdir_flags);
 static int s3fs_access(const char* path, int mask);
-static void* s3fs_init(struct fuse_conn_info* conn);
+static void* s3fs_init(struct fuse_conn_info* conn, struct fuse_config *cfg);
 static void s3fs_destroy(void*);
 #ifdef __APPLE__
 static int s3fs_setxattr(const char* path, const char* name, const char* value, size_t size, int flags, uint32_t position);
@@ -889,10 +889,10 @@ int put_headers(const char* path, const headers_t& meta, bool is_copy, bool use_
     return 0;
 }
 
-static int s3fs_getattr(const char* _path, struct stat* stbuf)
+static int s3fs_getattr(const char* _path, struct stat* stbuf, fuse_file_info* info)
 {
     WTF8_ENCODE(path)
-    int result;
+    int result = 0;
 
 #ifdef __APPLE__
     FUSE_CTX_DBG("[path=%s]", path);
@@ -900,19 +900,26 @@ static int s3fs_getattr(const char* _path, struct stat* stbuf)
     FUSE_CTX_INFO("[path=%s]", path);
 #endif
 
-    // check parent directory attribute.
-    if(0 != (result = check_parent_object_access(path, X_OK))){
-        return result;
-    }
-    if(0 != (result = check_object_access(path, F_OK, stbuf))){
-        return result;
-    }
     // If has already opened fd, the st_size should be instead.
     // (See: Issue 241)
     if(stbuf){
         AutoFdEntity autoent;
         const FdEntity*  ent;
-        if(nullptr != (ent = autoent.OpenExistFdEntity(path))){
+
+        if(!info){
+            // check parent directory attribute.
+            if(0 != (result = check_parent_object_access(path, X_OK))){
+                return result;
+            }
+            if(0 != (result = check_object_access(path, F_OK, stbuf))){
+                return result;
+            }
+            ent = autoent.OpenExistFdEntity(path);
+        }else{
+            ent = autoent.GetExistFdEntity(path, static_cast<int>(info->fh));
+        }
+
+        if(nullptr != ent){
             struct stat tmpstbuf;
             if(ent->GetStats(tmpstbuf)){
                 stbuf->st_size = tmpstbuf.st_size;
@@ -1503,7 +1510,7 @@ static int s3fs_symlink(const char* _from, const char* _to)
     return result;
 }
 
-static int rename_object(const char* from, const char* to, bool update_ctime)
+static int rename_object(const char* from, const char* to, bool update_ctime, unsigned int flags)
 {
     int         result;
     headers_t   meta;
@@ -1521,6 +1528,23 @@ static int rename_object(const char* from, const char* to, bool update_ctime)
     }
     if(0 != (result = get_object_attribute(from, &stbuf, &meta))){
         return result;
+    }
+
+    // [NOTE]
+    // Currently, this is incorrect.(As a mark to indicate the correction)
+    // If only the RENAME_NOREPLACE flag was used, the behavior would be correct,
+    // but it doesn't take RENAME_EXCHANGE into account.
+    // If RENAME_EXCHANGE is used, a higher-level function would need to check
+    // whether it is a directory and perform a separate process to perform the
+    // replacement.
+    //
+    if(0 != (RENAME_NOREPLACE & flags)){
+        if(-ENOENT != (result = check_object_access(to, F_OK, nullptr))){
+            if(0 == result){
+                result = -EEXIST;
+            }
+            return result;
+        }
     }
 
     std::string strSourcePath        = (mount_prefix.empty() && 0 == strcmp("/", from)) ? "//" : from;
@@ -1608,7 +1632,7 @@ static int rename_object(const char* from, const char* to, bool update_ctime)
     return result;
 }
 
-static int rename_object_nocopy(const char* from, const char* to, bool update_ctime)
+static int rename_object_nocopy(const char* from, const char* to, bool update_ctime, unsigned int flags)
 {
     int result;
 
@@ -1621,6 +1645,23 @@ static int rename_object_nocopy(const char* from, const char* to, bool update_ct
     if(0 != (result = check_parent_object_access(from, W_OK | X_OK))){
         // not permit removing "from" object parent dir.
         return result;
+    }
+
+    // [NOTE]
+    // Currently, this is incorrect.(As a mark to indicate the correction)
+    // If only the RENAME_NOREPLACE flag was used, the behavior would be correct,
+    // but it doesn't take RENAME_EXCHANGE into account.
+    // If RENAME_EXCHANGE is used, a higher-level function would need to check
+    // whether it is a directory and perform a separate process to perform the
+    // replacement.
+    //
+    if(0 != (RENAME_NOREPLACE & flags)){
+        if(-ENOENT != (result = check_object_access(to, F_OK, nullptr))){
+            if(0 == result){
+                result = -EEXIST;
+            }
+            return result;
+        }
     }
 
     // open & load
@@ -1664,7 +1705,7 @@ static int rename_object_nocopy(const char* from, const char* to, bool update_ct
     return result;
 }
 
-static int rename_large_object(const char* from, const char* to)
+static int rename_large_object(const char* from, const char* to, unsigned int flags)
 {
     int         result;
     struct stat stbuf;
@@ -1744,7 +1785,7 @@ static int clone_directory_object(const char* from, const char* to, bool update_
     return result;
 }
 
-static int rename_directory(const char* from, const char* to)
+static int rename_directory(const char* from, const char* to, unsigned int flags)
 {
     S3ObjList    head;
     s3obj_list_t headlist;
@@ -1760,6 +1801,23 @@ static int rename_directory(const char* from, const char* to)
     std::vector<mvnode> mvnodes;
 
     S3FS_PRN_INFO1("[from=%s][to=%s]", from, to);
+
+    // [NOTE]
+    // Currently, this is incorrect.(As a mark to indicate the correction)
+    // If only the RENAME_NOREPLACE flag was used, the behavior would be correct,
+    // but it doesn't take RENAME_EXCHANGE into account.
+    // If RENAME_EXCHANGE is used, a higher-level function would need to check
+    // whether it is a directory and perform a separate process to perform the
+    // replacement.
+    //
+    if(0 != (RENAME_NOREPLACE & flags)){
+        if(-ENOENT != (result = check_object_access(to, F_OK, nullptr))){
+            if(0 == result){
+                result = -EEXIST;
+            }
+            return result;
+        }
+    }
 
     //
     // Initiate and Add base directory into mvnode struct.
@@ -1876,9 +1934,9 @@ static int rename_directory(const char* from, const char* to)
     for(auto mn_cur = mvnodes.cbegin(); mn_cur != mvnodes.cend(); ++mn_cur){
         if(!mn_cur->is_dir){
             if(!nocopyapi && !norenameapi){
-                result = rename_object(mn_cur->old_path.c_str(), mn_cur->new_path.c_str(), false);          // keep ctime
+                result = rename_object(mn_cur->old_path.c_str(), mn_cur->new_path.c_str(), false, flags);          // keep ctime
             }else{
-                result = rename_object_nocopy(mn_cur->old_path.c_str(), mn_cur->new_path.c_str(), false);   // keep ctime
+                result = rename_object_nocopy(mn_cur->old_path.c_str(), mn_cur->new_path.c_str(), false, flags);   // keep ctime
             }
             if(0 != result){
                 S3FS_PRN_ERR("rename_object returned an error(%d)", result);
@@ -1905,7 +1963,7 @@ static int rename_directory(const char* from, const char* to)
     return 0;
 }
 
-static int s3fs_rename(const char* _from, const char* _to)
+static int s3fs_rename(const char* _from, const char* _to, unsigned int flags)
 {
     WTF8_ENCODE(from)
     WTF8_ENCODE(to)
@@ -1925,6 +1983,24 @@ static int s3fs_rename(const char* _from, const char* _to)
     if(0 != (result = get_object_attribute(from, &buf, nullptr))){
         return result;
     }
+
+    // [NOTE]
+    // Currently, this is incorrect.(As a mark to indicate the correction)
+    // If only the RENAME_NOREPLACE flag was used, the behavior would be correct,
+    // but it doesn't take RENAME_EXCHANGE into account.
+    // If RENAME_EXCHANGE is used, a higher-level function would need to check
+    // whether it is a directory and perform a separate process to perform the
+    // replacement.
+    //
+    if(0 != (RENAME_NOREPLACE & flags)){
+        if(-ENOENT != (result = check_object_access(to, F_OK, nullptr))){
+            if(0 == result){
+                result = -EEXIST;
+            }
+            return result;
+        }
+    }
+
     if(0 != (result = directory_empty(to))){
         return result;
     }
@@ -1945,14 +2021,14 @@ static int s3fs_rename(const char* _from, const char* _to)
 
     // files larger than 5GB must be modified via the multipart interface
     if(S_ISDIR(buf.st_mode)){
-        result = rename_directory(from, to);
+        result = rename_directory(from, to, flags);
     }else if(!nomultipart && buf.st_size >= singlepart_copy_limit){
-        result = rename_large_object(from, to);
+        result = rename_large_object(from, to, flags);
     }else{
         if(!nocopyapi && !norenameapi){
-            result = rename_object(from, to, true);             // update ctime
+            result = rename_object(from, to, true, flags);             // update ctime
         }else{
-            result = rename_object_nocopy(from, to, true);      // update ctime
+            result = rename_object_nocopy(from, to, true, flags);      // update ctime
         }
     }
 
@@ -1977,7 +2053,7 @@ static int s3fs_link(const char* _from, const char* _to)
     return -ENOTSUP;
 }
 
-static int s3fs_chmod(const char* _path, mode_t mode)
+static int s3fs_chmod(const char* _path, mode_t mode, fuse_file_info* info)
 {
     WTF8_ENCODE(path)
     int         result;
@@ -2123,7 +2199,7 @@ static int s3fs_chmod(const char* _path, mode_t mode)
     return 0;
 }
 
-static int s3fs_chmod_nocopy(const char* _path, mode_t mode)
+static int s3fs_chmod_nocopy(const char* _path, mode_t mode, fuse_file_info* info)
 {
     WTF8_ENCODE(path)
     int         result;
@@ -2223,7 +2299,7 @@ static int s3fs_chmod_nocopy(const char* _path, mode_t mode)
     return result;
 }
 
-static int s3fs_chown(const char* _path, uid_t uid, gid_t gid)
+static int s3fs_chown(const char* _path, uid_t uid, gid_t gid, fuse_file_info* info)
 {
     WTF8_ENCODE(path)
     int         result;
@@ -2375,7 +2451,7 @@ static int s3fs_chown(const char* _path, uid_t uid, gid_t gid)
     return 0;
 }
 
-static int s3fs_chown_nocopy(const char* _path, uid_t uid, gid_t gid)
+static int s3fs_chown_nocopy(const char* _path, uid_t uid, gid_t gid, fuse_file_info* info)
 {
     WTF8_ENCODE(path)
     int         result;
@@ -2606,7 +2682,7 @@ static int update_mctime_parent_directory(const char* _path)
     return 0;
 }
 
-static int s3fs_utimens(const char* _path, const struct timespec ts[2])
+static int s3fs_utimens(const char* _path, const struct timespec ts[2], fuse_file_info* info)
 {
     WTF8_ENCODE(path)
     int         result;
@@ -2764,7 +2840,7 @@ static int s3fs_utimens(const char* _path, const struct timespec ts[2])
     return 0;
 }
 
-static int s3fs_utimens_nocopy(const char* _path, const struct timespec ts[2])
+static int s3fs_utimens_nocopy(const char* _path, const struct timespec ts[2], fuse_file_info* info)
 {
     WTF8_ENCODE(path)
     int         result;
@@ -2872,7 +2948,7 @@ static int s3fs_utimens_nocopy(const char* _path, const struct timespec ts[2])
     return result;
 }
 
-static int s3fs_truncate(const char* _path, off_t size)
+static int s3fs_truncate(const char* _path, off_t size, fuse_file_info* info)
 {
     WTF8_ENCODE(path)
     int          result;
@@ -3505,7 +3581,7 @@ static int readdir_multi_head(const std::string& strpath, const S3ObjList& head,
     return 0;
 }
 
-static int s3fs_readdir(const char* _path, void* buf, fuse_fill_dir_t filler, off_t offset, struct fuse_file_info* fi)
+static int s3fs_readdir(const char* _path, void* buf, fuse_fill_dir_t filler, off_t offset, struct fuse_file_info* fi, enum fuse_readdir_flags)
 {
     WTF8_ENCODE(path)
     S3ObjList head;
@@ -3531,8 +3607,8 @@ static int s3fs_readdir(const char* _path, void* buf, fuse_fill_dir_t filler, of
     }
 
     // force to add "." and ".." name.
-    filler(buf, ".", nullptr, 0);
-    filler(buf, "..", nullptr, 0);
+    filler(buf, ".", nullptr, 0, FUSE_FILL_DIR_NONE);
+    filler(buf, "..", nullptr, 0, FUSE_FILL_DIR_NONE);
     if(head.IsEmpty()){
         return 0;
     }
@@ -4468,7 +4544,7 @@ static void s3fs_exit_fuseloop(int exit_status)
       }
 }
 
-static void* s3fs_init(struct fuse_conn_info* conn)
+static void* s3fs_init(struct fuse_conn_info* conn, struct fuse_config *cfg)
 {
     S3FS_PRN_INIT_INFO("init v%s%s with %s, credential-library(%s)", VERSION, COMMIT_HASH_VAL, s3fs_crypt_lib_name(), ps3fscred->GetCredFuncVersion(false));
 
@@ -4505,9 +4581,9 @@ static void* s3fs_init(struct fuse_conn_info* conn)
     }
     #endif
 
-    if(conn->capable & FUSE_CAP_BIG_WRITES){
-         conn->want |= FUSE_CAP_BIG_WRITES;
-    }
+//    if(conn->capable & FUSE_CAP_BIG_WRITES){
+//         conn->want |= FUSE_CAP_BIG_WRITES;
+//    }
 
     // Signal object
     if(!S3fsSignals::Initialize()){
@@ -6089,7 +6165,7 @@ int main(int argc, char* argv[])
         s3fs_oper.listxattr   = s3fs_listxattr;
         s3fs_oper.removexattr = s3fs_removexattr;
     }
-    s3fs_oper.flag_utime_omit_ok = true;
+//    s3fs_oper.flag_utime_omit_ok = true;
 
     // now passing things off to fuse, fuse will finish evaluating the command line args
     fuse_res = fuse_main(custom_args.argc, custom_args.argv, &s3fs_oper, nullptr);

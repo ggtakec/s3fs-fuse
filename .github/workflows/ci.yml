@@ -251,6 +251,8 @@ jobs:
         run: |
           cd test
           /bin/sh -c "ALL_TESTS=1 ASAN_OPTIONS=${ASAN_OPTIONS} TSAN_OPTIONS=${TSAN_OPTIONS} VALGRIND=${VALGRIND} RETRIES=${RETRIES} ./small-integration-test.sh"
+          echo "================================================================================================"
+          cat ./test-suite.log
 
   static-checks:
     if: false

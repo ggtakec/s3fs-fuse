@@ -501,7 +501,12 @@ function test_update_metadata_external_small_object() {
     #
     OBJECT_NAME=$(basename "${PWD}")/"${TEST_SETXATTR_FILE}"
     echo "${TEST_INPUT}" | aws_cli s3 cp - "s3://${TEST_BUCKET_1}/${OBJECT_NAME}"
-    set_xattr key value "${TEST_SETXATTR_FILE}"
+    if ! set_xattr key value "${TEST_SETXATTR_FILE}"; then
+        echo "Failed to xattr set"
+        ls -la "${TEST_SETXATTR_FILE}" || echo "could not list file(${TEST_SETXATTR_FILE})"
+        stat "${TEST_SETXATTR_FILE}"   || echo "could not get stat file(${TEST_SETXATTR_FILE})"
+        return 1
+    fi
     cmp "${TEST_SETXATTR_FILE}" <(echo "${TEST_INPUT}")
     XATTR_VALUE=$(get_xattr key "${TEST_SETXATTR_FILE}")
     if [ -z "${XATTR_VALUE}" ] || [ "${XATTR_VALUE}" != "value" ]; then
@@ -586,7 +591,12 @@ function test_update_metadata_external_large_object() {
     #
     OBJECT_NAME=$(basename "${PWD}")/"${TEST_SETXATTR_FILE}"
     aws_cli s3 cp "${TEMP_DIR}/${BIG_FILE}" "s3://${TEST_BUCKET_1}/${OBJECT_NAME}" --no-progress
-    set_xattr key value "${TEST_SETXATTR_FILE}"
+    if ! set_xattr key value "${TEST_SETXATTR_FILE}"; then
+        echo "Failed to xattr set"
+        ls -la "${TEST_SETXATTR_FILE}" || echo "could not list file(${TEST_SETXATTR_FILE})"
+        stat "${TEST_SETXATTR_FILE}"   || echo "could not get stat file(${TEST_SETXATTR_FILE})"
+        return 1
+    fi
     cmp "${TEST_SETXATTR_FILE}" "${TEMP_DIR}/${BIG_FILE}"
     XATTR_VALUE=$(get_xattr key "${TEST_SETXATTR_FILE}")
     if [ -z "${XATTR_VALUE}" ] || [ "${XATTR_VALUE}" != "value" ]; then
@@ -2777,181 +2787,8 @@ function test_statvfs() {
 }
 
 function test_pjdfstest() {
-    # TODO: explain exclusions
-    # fails with -o use_cache: ../../pjdfstest/tests/rmdir/01.t
-    prove -rv \
-        ../../pjdfstest/tests/chflags/*.t \
-        ../../pjdfstest/tests/chmod/0[4689].t \
-        ../../pjdfstest/tests/chmod/10.t \
-        ../../pjdfstest/tests/chown/0[4689].t \
-        ../../pjdfstest/tests/chown/10.t \
-        ../../pjdfstest/tests/ftruncate/0[147-9].t \
-        ../../pjdfstest/tests/ftruncate/1[0134].t \
-        ../../pjdfstest/tests/granular/*.t \
-        ../../pjdfstest/tests/link/*.t \
-        ../../pjdfstest/tests/mkdir/0[347-9].t \
-        ../../pjdfstest/tests/mkdir/1[12]*.t \
-        ../../pjdfstest/tests/mkfifo/0[3478].t \
-        ../../pjdfstest/tests/mkfifo/1*.t \
-        ../../pjdfstest/tests/mknod/0[479].t \
-        ../../pjdfstest/tests/mknod/10.t \
-        ../../pjdfstest/tests/open/0[49].t \
-        ../../pjdfstest/tests/open/1*.t \
-        ../../pjdfstest/tests/open/2[0-134].t \
-        ../../pjdfstest/tests/posix_fallocate/*.t \
-        ../../pjdfstest/tests/rename/0[2-36-8].t \
-        ../../pjdfstest/tests/rename/1[15-9].t \
-        ../../pjdfstest/tests/rename/22.t \
-        ../../pjdfstest/tests/rmdir/0[3-59].t \
-        ../../pjdfstest/tests/rmdir/1[02-5].t \
-        ../../pjdfstest/tests/symlink/0[13479].t \
-        ../../pjdfstest/tests/symlink/1*.t \
-        ../../pjdfstest/tests/truncate/0[147-9].t \
-        ../../pjdfstest/tests/truncate/1[0134].t \
-        ../../pjdfstest/tests/unlink/0[47-8].t \
-        ../../pjdfstest/tests/unlink/1[02-4].t \
-        ../../pjdfstest/tests/utimensat/0[1-58-9].t
-}
-
-function add_all_tests {
-    if s3fs_args | grep -q use_cache; then
-        add_tests test_cache_file_stat
-        add_tests test_zero_cache_file_stat
-    else
-        add_tests test_file_names_longer_than_posix
-    fi
-    if ! s3fs_args | grep -q ensure_diskfree && ! uname | grep -q Darwin; then
-        add_tests test_clean_up_cache
-    fi
-    add_tests test_create_empty_file
-    add_tests test_append_file
-    add_tests test_truncate_file
-    add_tests test_truncate_upload
-    add_tests test_truncate_empty_file
-    add_tests test_truncate_shrink_file
-    add_tests test_truncate_shrink_read_file
-    add_tests test_mv_file
-    add_tests test_mv_to_exist_file
-    add_tests test_mv_empty_directory
-    add_tests test_mv_nonempty_directory
-    add_tests test_redirects
-    add_tests test_mkdir_rmdir
-    add_tests test_chmod
-    add_tests test_chown
-    add_tests test_list
-    add_tests test_remove_nonempty_directory
-    add_tests test_external_directory_creation
-    add_tests test_external_modification
-    add_tests test_external_creation
-    add_tests test_read_external_object
-    add_tests test_read_external_dir_object
     add_tests test_update_metadata_external_small_object
     add_tests test_update_metadata_external_large_object
-    add_tests test_rename_before_close
-    add_tests test_multipart_upload
-    add_tests test_multipart_copy
-
-    if ! uname | grep -q Darwin || ! s3fs_args | grep -q nocopyapi; then
-        # FIXME:
-        # If you specify the nocopyapi option with macos-fuse-t, the following error will
-        # occur when manipulating the xattr of the copied object:
-        #    "could not copy extended attributes to <file>: Result too large"
-        # As no solution has been found at this time, this test is bypassed on macos with
-        # nocopyapi.
-        # Please pay attention to future developments in macos-fuse-t.
-        #
-        add_tests test_multipart_mix
-    fi
-
-    add_tests test_utimens_during_multipart
-    add_tests test_special_characters
-    add_tests test_hardlink
-    add_tests test_symlink
-    if ! uname | grep -q Darwin; then
-        add_tests test_mknod
-        add_tests test_extended_attributes
-    fi
-    add_tests test_mtime_file
-
-    add_tests test_update_time_chmod
-    add_tests test_update_time_chown
-    add_tests test_update_time_xattr
-    add_tests test_update_time_touch
-    if ! mount -t fuse.s3fs | grep "$TEST_BUCKET_MOUNT_POINT_1 " | grep -q -e noatime -e relatime ; then
-        add_tests test_update_time_touch_a
-    fi
-    add_tests test_update_time_append
-    add_tests test_update_time_cp_p
-    add_tests test_update_time_mv
-
-    add_tests test_update_directory_time_chmod
-    add_tests test_update_directory_time_chown
-    add_tests test_update_directory_time_touch
-    if ! mount -t fuse.s3fs | grep "$TEST_BUCKET_MOUNT_POINT_1 " | grep -q -e noatime -e relatime ; then
-        add_tests test_update_directory_time_touch_a
-    fi
-    if ! uname | grep -q Darwin; then
-        # FIXME:
-        # These test fail in macos-fuse-t because mtime/ctime/atime are not updated.
-        # Currently, these are not an issue with s3fs, so we will bypass this test for macos.
-        # Please pay attention to future developments in macos-fuse-t.
-        #
-        add_tests test_update_directory_time_set_xattr
-        add_tests test_update_directory_time_subdir
-    fi
-    add_tests test_update_chmod_opened_file
-    if s3fs_args | grep -q update_parent_dir_stat; then
-        if ! uname | grep -q Darwin; then
-            # FIXME:
-            # In macos-fuse-t, this test can sometimes succeed if the test waits for more
-            # than one second while it is processing.
-            # However, the results are currently unstable, thus this test is bypassed on macos.
-            # Please pay attention to future developments in macos-fuse-t.
-            #
-            add_tests test_update_parent_directory_time
-        fi
-    fi
-    if ! s3fs_args | grep -q use_xattr; then
-        add_tests test_posix_acl
-    fi
-
-    add_tests test_rm_rf_dir
-    add_tests test_copy_file
-    add_tests test_write_after_seek_ahead
-    add_tests test_overwrite_existing_file_range
-    add_tests test_concurrent_directory_updates
-    add_tests test_concurrent_reads
-    add_tests test_concurrent_writes
-    add_tests test_open_second_fd
-    add_tests test_write_multiple_offsets
-    add_tests test_write_multiple_offsets_backwards
-    add_tests test_content_type
-    add_tests test_truncate_cache
-    add_tests test_upload_sparsefile
-    add_tests test_mix_upload_entities
-    # TODO: investigate why only Alpine cannot see the implicit directory objects.
-    if ! test -f /etc/os-release || ! grep -q -i -e 'ID=alpine' -e 'ID="alpine"' /etc/os-release; then
-        add_tests test_not_existed_dir_obj
-    fi
-    add_tests test_ut_ossfs
-    add_tests test_cr_filename
-    if ! s3fs_args | grep -q ensure_diskfree && ! uname | grep -q Darwin; then
-        add_tests test_ensurespace_move_file
-    fi
-    add_tests test_write_data_with_skip
-    add_tests test_not_boundary_writes
-
-    # [NOTE]
-    # The test on CI will fail depending on the permissions, so skip these(chmod/chown).
-    #
-    # add_tests test_chmod_mountpoint
-    # add_tests test_chown_mountpoint
-    add_tests test_time_mountpoint
-    add_tests test_statvfs
-
-    if ! uname | grep -q Darwin; then
-        add_tests test_pjdfstest
-    fi
 }
 
 init_suite

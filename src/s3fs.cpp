@@ -3668,6 +3668,7 @@ static int s3fs_setxattr(const char* path, const char* name, const char* value, 
         S3FS_PRN_ERR("Wrong parameter: value(%p), size(%zu)", value, size);
         return 0;
     }
+S3FS_PRN_ERR("#### [DEBUG] - [path=%s][name=%s][value=%p][size=%zu][flags=0x%x]", path, name, value, size, flags);
 
 #if defined(__APPLE__)
     if (position != 0) {
@@ -3690,6 +3691,7 @@ static int s3fs_setxattr(const char* path, const char* name, const char* value, 
     if(0 != (result = check_object_owner(path, &stbuf))){
         return result;
     }
+S3FS_PRN_ERR("#### [DEBUG] - PASS 0");
 
     if(S_ISDIR(stbuf.st_mode)){
         result = chk_dir_object_type(path, newpath, strpath, nowcache, &meta, &nDirType);
@@ -3699,6 +3701,7 @@ static int s3fs_setxattr(const char* path, const char* name, const char* value, 
         result   = get_object_attribute(strpath.c_str(), nullptr, &meta);
     }
     if(0 != result){
+S3FS_PRN_ERR("#### [DEBUG] - PASS 1 : result = %d", result);
         return result;
     }
 
@@ -3709,6 +3712,7 @@ static int s3fs_setxattr(const char* path, const char* name, const char* value, 
 
             // At first, remove directory old object
             if(0 != (result = remove_old_type_dir(strpath, nDirType))){
+S3FS_PRN_ERR("#### [DEBUG] - PASS 2 : result = %d", result);
                 return result;
             }
         }
@@ -3723,6 +3727,7 @@ static int s3fs_setxattr(const char* path, const char* name, const char* value, 
         set_stat_to_timespec(stbuf, stat_time_type::CTIME, ts_ctime);
 
         if(0 != (result = create_directory_object(newpath.c_str(), stbuf.st_mode, ts_atime, ts_mtime, ts_ctime, stbuf.st_uid, stbuf.st_gid, nullptr))){
+S3FS_PRN_ERR("#### [DEBUG] - PASS 3 : result = %d", result);
             return result;
         }
 
@@ -3730,6 +3735,7 @@ static int s3fs_setxattr(const char* path, const char* name, const char* value, 
         strpath  = newpath;
         nowcache = strpath;
     }
+S3FS_PRN_ERR("#### [DEBUG] - PASS 4");
 
     // set xattr all object
     std::string strSourcePath              = (mount_prefix.empty() && "/" == strpath) ? "//" : strpath;
@@ -3761,6 +3767,7 @@ static int s3fs_setxattr(const char* path, const char* name, const char* value, 
         // cppcheck-suppress unmatchedSuppression
         // cppcheck-suppress knownConditionTrueFalse
         if(0 != (result = set_xattrs_to_header(updatemeta, name, value, size, flags))){
+S3FS_PRN_ERR("#### [DEBUG] - PASS 5 : result = %d", result);
             return result;
         }
 
@@ -3780,6 +3787,7 @@ static int s3fs_setxattr(const char* path, const char* name, const char* value, 
             // So we need to update the cache, if it exists. (see. s3fs_create and s3fs_utimens)
             //
             if(!StatCache::getStatCacheData()->AddStat(strpath, updatemeta, false, true)){
+S3FS_PRN_ERR("#### [DEBUG] - PASS 6 : result = %d", -EIO);
                 return -EIO;
             }
         }
@@ -3789,16 +3797,19 @@ static int s3fs_setxattr(const char* path, const char* name, const char* value, 
         // cppcheck-suppress unmatchedSuppression
         // cppcheck-suppress knownConditionTrueFalse
         if(0 != (result = set_xattrs_to_header(meta, name, value, size, flags))){
+S3FS_PRN_ERR("#### [DEBUG] - PASS 7 : result = %d", result);
             return result;
         }
         merge_headers(meta, updatemeta, true);
 
         // upload meta directly.
         if(0 != (result = put_headers(strpath.c_str(), meta, true))){
+S3FS_PRN_ERR("#### [DEBUG] - PASS 8 : result = %d", result);
             return result;
         }
         StatCache::getStatCacheData()->DelStat(nowcache);
     }
+S3FS_PRN_ERR("#### [DEBUG] - PASS 9");
 
     return 0;
 }

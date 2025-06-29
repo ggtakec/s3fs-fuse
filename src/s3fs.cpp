@@ -2844,10 +2844,10 @@ S3FS_PRN_ERR("#### [DEBUG] - PASS 10");
 
     S3FS_MALLOCTRIM(0);
 
-S3FS_PRN_ERR("#### [DEBUG] - PASS 11: fuse file handle = %lu", fi->fh);
+S3FS_PRN_ERR("#### [DEBUG] - PASS 11: fuse file handle = %llu", fi->fh);
 
     std::string strtmp = path;
-    if(std::string::npos != (pos = strtmp.find("txt_set_xattr"))){
+    if(std::string::npos != strtmp.find("txt_set_xattr")){
         struct stat sttmp;
 
         // parent

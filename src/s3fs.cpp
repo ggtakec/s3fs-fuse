@@ -2840,9 +2840,11 @@ S3FS_PRN_ERR("#### [DEBUG] - PASS 9 : result = %d", result);
     }
     fi->fh = autoent.Detach();       // KEEP fdentity open;
 
+S3FS_PRN_ERR("#### [DEBUG] - PASS 10");
+
     S3FS_MALLOCTRIM(0);
 
-S3FS_PRN_ERR("#### [DEBUG] - PASS 10");
+S3FS_PRN_ERR("#### [DEBUG] - PASS 11: fuse file handle = %lu", fi->fh);
     return 0;
 }
 

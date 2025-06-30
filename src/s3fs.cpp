@@ -2846,25 +2846,25 @@ S3FS_PRN_ERR("#### [DEBUG] - PASS 10");
 
 S3FS_PRN_ERR("#### [DEBUG] - PASS 11: fuse file handle = %llu", fi->fh);
 
-    std::string strtmp = path;
-    if(std::string::npos != strtmp.find("txt_set_xattr")){
-        struct stat sttmp;
-
-        // parent
-        std::string strtmpp = mydirname(path);
-        if(0 == get_object_attribute(strtmpp.c_str(), &sttmp)){
-            S3FS_PRN_DBG("#### [DEBUG] - PASS 12: parent -> [path=%s] uid=%u, gid=%u, mode=%04o", strtmpp.c_str(), (unsigned int)(sttmp.st_uid), (unsigned int)(sttmp.st_gid), sttmp.st_mode);
-        }else{
-            S3FS_PRN_ERR("#### [DEBUG] - PASS 12: could not get stat for parent(%s)", strtmpp.c_str());
-        }
-
-        // own
-        if(0 == get_object_attribute(strtmp.c_str(), &sttmp)){
-            S3FS_PRN_DBG("#### [DEBUG] - PASS 12: parent -> [path=%s] uid=%u, gid=%u, mode=%04o", strtmp.c_str(), (unsigned int)(sttmp.st_uid), (unsigned int)(sttmp.st_gid), sttmp.st_mode);
-        }else{
-            S3FS_PRN_ERR("#### [DEBUG] - PASS 12: could not get stat for parent(%s)", strtmp.c_str());
-        }
-    }
+//    std::string strtmp = path;
+//    if(std::string::npos != strtmp.find("txt_set_xattr")){
+//        struct stat sttmp;
+//
+//        // parent
+//        std::string strtmpp = mydirname(path);
+//        if(0 == get_object_attribute(strtmpp.c_str(), &sttmp)){
+//            S3FS_PRN_DBG("#### [DEBUG] - PASS 12: parent -> [path=%s] uid=%u, gid=%u, mode=%04o", strtmpp.c_str(), (unsigned int)(sttmp.st_uid), (unsigned int)(sttmp.st_gid), sttmp.st_mode);
+//        }else{
+//            S3FS_PRN_ERR("#### [DEBUG] - PASS 12: could not get stat for parent(%s)", strtmpp.c_str());
+//        }
+//
+//        // own
+//        if(0 == get_object_attribute(strtmp.c_str(), &sttmp)){
+//            S3FS_PRN_DBG("#### [DEBUG] - PASS 12: parent -> [path=%s] uid=%u, gid=%u, mode=%04o", strtmp.c_str(), (unsigned int)(sttmp.st_uid), (unsigned int)(sttmp.st_gid), sttmp.st_mode);
+//        }else{
+//            S3FS_PRN_ERR("#### [DEBUG] - PASS 12: could not get stat for parent(%s)", strtmp.c_str());
+//        }
+//    }
 
     return 0;
 }

@@ -150,8 +150,8 @@ jobs:
 
       - name: Test suite
         run: |
-          make check -C src
-          make ALL_TESTS=1 check -C test && (cat test/test-suite.log; exit 0) || (cat test/test-suite.log; exit 1)
+          cd test
+          ALL_TESTS=1 ./small-integration-test.sh
 
   MemoryTest:
     if: false

@@ -2781,6 +2781,18 @@ int S3fsCurl::HeadRequest(const char* tpath, headers_t& meta)
     int result = -1;
 
     S3FS_PRN_INFO3("[tpath=%s]", SAFESTRPTR(tpath));
+//TEST
+    bool isHit = (NULL != strstr(tpath, "_set_xattr"));
+    if(!isHit){
+        if(0 == strncmp(tpath, "/testrun-", 9)){
+            const char* ptmp = &(tpath[1]);
+            const char* cpos = strchr(ptmp, '/');
+            if(NULL == cpos || cpos == &(ptmp[strlen(ptmp) - 1])){
+                isHit = true;
+            }
+        }
+    }
+//TEST
 
     // At first, try to get without SSE-C headers
     if(!PreHeadRequest(tpath) || !fpLazySetup || !fpLazySetup(this) || 0 != (result = RequestPerform())){
@@ -2808,6 +2820,11 @@ int S3fsCurl::HeadRequest(const char* tpath, headers_t& meta)
 
     // file exists in s3
     // fixme: clean this up.
+//TEST
+    if(isHit){
+        S3FS_PRN_ERR("####### file : %s = {", tpath);
+    }
+//TEST
     meta.clear();
     for(auto iter = responseHeaders.cbegin(); iter != responseHeaders.cend(); ++iter){
         auto key          = CaseInsensitiveStringView(iter->first);
@@ -2818,8 +2835,18 @@ int S3fsCurl::HeadRequest(const char* tpath, headers_t& meta)
            key == "last-modified" ||
            key.is_prefix("x-amz")){
             meta[iter->first] = value;
+//TEST
+            if(isHit){
+                S3FS_PRN_ERR("      %s : %s", iter->first.c_str(), value.c_str());
+            }
+//TEST
         }
     }
+//TEST
+    if(isHit){
+        S3FS_PRN_ERR("}");
+    }
+//TEST
     return 0;
 }
 

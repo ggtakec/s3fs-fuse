@@ -2747,7 +2747,7 @@ static int s3fs_open(const char* _path, struct fuse_file_info* fi)
     if ((fi->flags & O_ACCMODE) == O_RDONLY && fi->flags & O_TRUNC) {
         return -EACCES;
     }
-S3FS_PRN_ERR("#### [DEBUG] - PASS 1");
+//S3FS_PRN_ERR("#### [DEBUG] - PASS 1");
 
     // [NOTE]
     // Delete the Stats cache only if the file is not open.
@@ -2763,18 +2763,18 @@ S3FS_PRN_ERR("#### [DEBUG] - PASS 1");
 
     int mask = (O_RDONLY != (fi->flags & O_ACCMODE) ? W_OK : R_OK);
     if(0 != (result = check_parent_object_access(path, X_OK))){
-S3FS_PRN_ERR("#### [DEBUG] - PASS 2 : result = %d", result);
+//S3FS_PRN_ERR("#### [DEBUG] - PASS 2 : result = %d", result);
         return result;
     }
 
     result = check_object_access(path, mask, &st);
     if(-ENOENT == result){
         if(0 != (result = check_parent_object_access(path, W_OK))){
-S3FS_PRN_ERR("#### [DEBUG] - PASS 3 : result = %d", result);
+//S3FS_PRN_ERR("#### [DEBUG] - PASS 3 : result = %d", result);
             return result;
         }
     }else if(0 != result){
-S3FS_PRN_ERR("#### [DEBUG] - PASS 4 : result = %d", result);
+//S3FS_PRN_ERR("#### [DEBUG] - PASS 4 : result = %d", result);
         return result;
     }
 
@@ -2798,7 +2798,7 @@ S3FS_PRN_ERR("#### [DEBUG] - PASS 4 : result = %d", result);
         if(nullptr != (ent = autoent.OpenExistFdEntity(path)) && ent->IsModified()){
             // sets the file size being edited.
             if(!ent->GetSize(st.st_size)){
-S3FS_PRN_ERR("#### [DEBUG] - PASS 5 : result = %d", -EIO);
+//S3FS_PRN_ERR("#### [DEBUG] - PASS 5 : result = %d", -EIO);
                 return -EIO;
             }
         }
@@ -2808,7 +2808,7 @@ S3FS_PRN_ERR("#### [DEBUG] - PASS 5 : result = %d", -EIO);
     }
 
     if(0 != (result = get_object_attribute(path, nullptr, &meta, true, nullptr, true))){    // no truncate cache
-S3FS_PRN_ERR("#### [DEBUG] - PASS 6 : result = %d", result);
+//S3FS_PRN_ERR("#### [DEBUG] - PASS 6 : result = %d", result);
       return result;
     }
 
@@ -2817,7 +2817,7 @@ S3FS_PRN_ERR("#### [DEBUG] - PASS 6 : result = %d", result);
 
     if(nullptr == (ent = autoent.Open(path, &meta, st.st_size, st_mctime, fi->flags, false, true, false))){
         StatCache::getStatCacheData()->DelStat(path);
-S3FS_PRN_ERR("#### [DEBUG] - PASS 7 : result = %d", -EIO);
+//S3FS_PRN_ERR("#### [DEBUG] - PASS 7 : result = %d", -EIO);
         return -EIO;
     }
 
@@ -2827,24 +2827,24 @@ S3FS_PRN_ERR("#### [DEBUG] - PASS 7 : result = %d", -EIO);
 
         if(0 != (result = ent->SetMCtime(ts, ts))){
             S3FS_PRN_ERR("could not set mtime and ctime to file(%s): result=%d", path, result);
-S3FS_PRN_ERR("#### [DEBUG] - PASS 8 : result = %d", result);
+//S3FS_PRN_ERR("#### [DEBUG] - PASS 8 : result = %d", result);
             return result;
         }
 
         if(0 != (result = ent->RowFlush(autoent.GetPseudoFd(), path, true))){
             S3FS_PRN_ERR("could not upload file(%s): result=%d", path, result);
             StatCache::getStatCacheData()->DelStat(path);
-S3FS_PRN_ERR("#### [DEBUG] - PASS 9 : result = %d", result);
+//S3FS_PRN_ERR("#### [DEBUG] - PASS 9 : result = %d", result);
             return result;
         }
     }
     fi->fh = autoent.Detach();       // KEEP fdentity open;
 
-S3FS_PRN_ERR("#### [DEBUG] - PASS 10");
+//S3FS_PRN_ERR("#### [DEBUG] - PASS 10");
 
     S3FS_MALLOCTRIM(0);
 
-S3FS_PRN_ERR("#### [DEBUG] - PASS 11: fuse file handle = %llu", fi->fh);
+//S3FS_PRN_ERR("#### [DEBUG] - PASS 11: fuse file handle = %llu", fi->fh);
 
 //    std::string strtmp = path;
 //    if(std::string::npos != strtmp.find("txt_set_xattr")){

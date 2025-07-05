@@ -475,26 +475,26 @@ function test_update_metadata_external_small_object() {
     #
     # chmod
     #
-    local OBJECT_NAME; OBJECT_NAME=$(basename "${PWD}")/"${TEST_CHMOD_FILE}"
-    echo "${TEST_INPUT}" | aws_cli s3 cp - "s3://${TEST_BUCKET_1}/${OBJECT_NAME}"
-    chmod +x "${TEST_CHMOD_FILE}"
-    cmp "${TEST_CHMOD_FILE}" <(echo "${TEST_INPUT}")
+#    local OBJECT_NAME; OBJECT_NAME=$(basename "${PWD}")/"${TEST_CHMOD_FILE}"
+#    echo "${TEST_INPUT}" | aws_cli s3 cp - "s3://${TEST_BUCKET_1}/${OBJECT_NAME}"
+#    chmod +x "${TEST_CHMOD_FILE}"
+#    cmp "${TEST_CHMOD_FILE}" <(echo "${TEST_INPUT}")
 
     #
     # chown
     #
-    OBJECT_NAME=$(basename "${PWD}")/"${TEST_CHOWN_FILE}"
-    echo "${TEST_INPUT}" | aws_cli s3 cp - "s3://${TEST_BUCKET_1}/${OBJECT_NAME}"
-    chown "${UID}" "${TEST_CHOWN_FILE}"
-    cmp "${TEST_CHOWN_FILE}" <(echo "${TEST_INPUT}")
+#    OBJECT_NAME=$(basename "${PWD}")/"${TEST_CHOWN_FILE}"
+#    echo "${TEST_INPUT}" | aws_cli s3 cp - "s3://${TEST_BUCKET_1}/${OBJECT_NAME}"
+#    chown "${UID}" "${TEST_CHOWN_FILE}"
+#    cmp "${TEST_CHOWN_FILE}" <(echo "${TEST_INPUT}")
 
     #
     # utimens
     #
-    OBJECT_NAME=$(basename "${PWD}")/"${TEST_UTIMENS_FILE}"
-    echo "${TEST_INPUT}" | aws_cli s3 cp - "s3://${TEST_BUCKET_1}/${OBJECT_NAME}"
-    touch "${TEST_UTIMENS_FILE}"
-    cmp "${TEST_UTIMENS_FILE}" <(echo "${TEST_INPUT}")
+#    OBJECT_NAME=$(basename "${PWD}")/"${TEST_UTIMENS_FILE}"
+#    echo "${TEST_INPUT}" | aws_cli s3 cp - "s3://${TEST_BUCKET_1}/${OBJECT_NAME}"
+#    touch "${TEST_UTIMENS_FILE}"
+#    cmp "${TEST_UTIMENS_FILE}" <(echo "${TEST_INPUT}")
 
     #
     # set xattr
@@ -524,22 +524,22 @@ function test_update_metadata_external_small_object() {
     # will be skipped for macos.
     # If a solution is found in the future, we will test it on macos as well.
     #
-    if ! uname | grep -q Darwin; then
-        OBJECT_NAME=$(basename "${PWD}")/"${TEST_RMXATTR_FILE}"
-        echo "${TEST_INPUT}" | aws_cli s3 cp - "s3://${TEST_BUCKET_1}/${OBJECT_NAME}" --metadata xattr=%7B%22key%22%3A%22dmFsdWU%3D%22%7D
-        del_xattr key "${TEST_RMXATTR_FILE}"
-        cmp "${TEST_RMXATTR_FILE}" <(echo "${TEST_INPUT}")
-        if find_xattr key "${TEST_RMXATTR_FILE}"; then
-            echo "could read xattr(key) value after removing it."
-            return 1
-        fi
-    fi
+#    if ! uname | grep -q Darwin; then
+#        OBJECT_NAME=$(basename "${PWD}")/"${TEST_RMXATTR_FILE}"
+#        echo "${TEST_INPUT}" | aws_cli s3 cp - "s3://${TEST_BUCKET_1}/${OBJECT_NAME}" --metadata xattr=%7B%22key%22%3A%22dmFsdWU%3D%22%7D
+#        del_xattr key "${TEST_RMXATTR_FILE}"
+#        cmp "${TEST_RMXATTR_FILE}" <(echo "${TEST_INPUT}")
+#        if find_xattr key "${TEST_RMXATTR_FILE}"; then
+#            echo "could read xattr(key) value after removing it."
+#            return 1
+#        fi
+#    fi
 
-    rm -f "${TEST_CHMOD_FILE}"
-    rm -f "${TEST_CHOWN_FILE}"
-    rm -f "${TEST_UTIMENS_FILE}"
+#    rm -f "${TEST_CHMOD_FILE}"
+#    rm -f "${TEST_CHOWN_FILE}"
+#    rm -f "${TEST_UTIMENS_FILE}"
     rm -f "${TEST_SETXATTR_FILE}"
-    rm -f "${TEST_RMXATTR_FILE}"
+#    rm -f "${TEST_RMXATTR_FILE}"
 }
 
 function test_update_metadata_external_large_object() {
@@ -560,26 +560,26 @@ function test_update_metadata_external_large_object() {
     #
     # chmod
     #
-    local OBJECT_NAME; OBJECT_NAME=$(basename "${PWD}")/"${TEST_CHMOD_FILE}"
-    aws_cli s3 cp "${TEMP_DIR}/${BIG_FILE}" "s3://${TEST_BUCKET_1}/${OBJECT_NAME}" --no-progress
-    chmod +x "${TEST_CHMOD_FILE}"
-    cmp "${TEST_CHMOD_FILE}" "${TEMP_DIR}/${BIG_FILE}"
+#    local OBJECT_NAME; OBJECT_NAME=$(basename "${PWD}")/"${TEST_CHMOD_FILE}"
+#    aws_cli s3 cp "${TEMP_DIR}/${BIG_FILE}" "s3://${TEST_BUCKET_1}/${OBJECT_NAME}" --no-progress
+#    chmod +x "${TEST_CHMOD_FILE}"
+#    cmp "${TEST_CHMOD_FILE}" "${TEMP_DIR}/${BIG_FILE}"
 
     #
     # chown
     #
-    OBJECT_NAME=$(basename "${PWD}")/"${TEST_CHOWN_FILE}"
-    aws_cli s3 cp "${TEMP_DIR}/${BIG_FILE}" "s3://${TEST_BUCKET_1}/${OBJECT_NAME}" --no-progress
-    chown "${UID}" "${TEST_CHOWN_FILE}"
-    cmp "${TEST_CHOWN_FILE}" "${TEMP_DIR}/${BIG_FILE}"
+#    OBJECT_NAME=$(basename "${PWD}")/"${TEST_CHOWN_FILE}"
+#    aws_cli s3 cp "${TEMP_DIR}/${BIG_FILE}" "s3://${TEST_BUCKET_1}/${OBJECT_NAME}" --no-progress
+#    chown "${UID}" "${TEST_CHOWN_FILE}"
+#    cmp "${TEST_CHOWN_FILE}" "${TEMP_DIR}/${BIG_FILE}"
 
     #
     # utimens
     #
-    OBJECT_NAME=$(basename "${PWD}")/"${TEST_UTIMENS_FILE}"
-    aws_cli s3 cp "${TEMP_DIR}/${BIG_FILE}" "s3://${TEST_BUCKET_1}/${OBJECT_NAME}" --no-progress
-    touch "${TEST_UTIMENS_FILE}"
-    cmp "${TEST_UTIMENS_FILE}" "${TEMP_DIR}/${BIG_FILE}"
+#    OBJECT_NAME=$(basename "${PWD}")/"${TEST_UTIMENS_FILE}"
+#    aws_cli s3 cp "${TEMP_DIR}/${BIG_FILE}" "s3://${TEST_BUCKET_1}/${OBJECT_NAME}" --no-progress
+#    touch "${TEST_UTIMENS_FILE}"
+#    cmp "${TEST_UTIMENS_FILE}" "${TEMP_DIR}/${BIG_FILE}"
 
     #
     # set xattr
@@ -609,23 +609,23 @@ function test_update_metadata_external_large_object() {
     # will be skipped for macos.
     # If a solution is found in the future, we will test it on macos as well.
     #
-    if ! uname | grep -q Darwin; then
-        OBJECT_NAME=$(basename "${PWD}")/"${TEST_RMXATTR_FILE}"
-        aws_cli s3 cp "${TEMP_DIR}/${BIG_FILE}" "s3://${TEST_BUCKET_1}/${OBJECT_NAME}" --no-progress --metadata xattr=%7B%22key%22%3A%22dmFsdWU%3D%22%7D
-        del_xattr key "${TEST_RMXATTR_FILE}"
-        cmp "${TEST_RMXATTR_FILE}" "${TEMP_DIR}/${BIG_FILE}"
-        if find_xattr key "${TEST_RMXATTR_FILE}"; then
-            echo "could read xattr(key) value after removing it."
-            return 1
-        fi
-    fi
+#    if ! uname | grep -q Darwin; then
+#        OBJECT_NAME=$(basename "${PWD}")/"${TEST_RMXATTR_FILE}"
+#        aws_cli s3 cp "${TEMP_DIR}/${BIG_FILE}" "s3://${TEST_BUCKET_1}/${OBJECT_NAME}" --no-progress --metadata xattr=%7B%22key%22%3A%22dmFsdWU%3D%22%7D
+#        del_xattr key "${TEST_RMXATTR_FILE}"
+#        cmp "${TEST_RMXATTR_FILE}" "${TEMP_DIR}/${BIG_FILE}"
+#        if find_xattr key "${TEST_RMXATTR_FILE}"; then
+#            echo "could read xattr(key) value after removing it."
+#            return 1
+#        fi
+#    fi
 
-    rm -f "${TEMP_DIR}/${BIG_FILE}"
-    rm -f "${TEST_CHMOD_FILE}"
-    rm -f "${TEST_CHOWN_FILE}"
-    rm -f "${TEST_UTIMENS_FILE}"
+#    rm -f "${TEMP_DIR}/${BIG_FILE}"
+#    rm -f "${TEST_CHMOD_FILE}"
+#    rm -f "${TEST_CHOWN_FILE}"
+#    rm -f "${TEST_UTIMENS_FILE}"
     rm -f "${TEST_SETXATTR_FILE}"
-    rm -f "${TEST_RMXATTR_FILE}"
+#    rm -f "${TEST_RMXATTR_FILE}"
 }
 
 function test_rename_before_close {

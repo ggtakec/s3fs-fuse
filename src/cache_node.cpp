@@ -1201,7 +1201,7 @@ std::shared_ptr<StatCacheNode> DirStatCache::FindHasLock(const std::string& strp
 
 bool DirStatCache::NeedTruncateProcessing()
 {
-    if(!StatCacheNode::IsEnableExpireTime()){
+    if(!StatCacheNode::IsEnableExpireTime() || !NeedExpireCheckHasLock()){
         return false;
     }
     std::lock_guard<std::mutex> lock(StatCacheNode::cache_lock);

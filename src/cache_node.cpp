@@ -98,6 +98,7 @@ bool            StatCacheNode::IsExpireIntervalType            = false;
 time_t          StatCacheNode::ExpireTime                      = 15 * 60;
 bool            StatCacheNode::UseNegativeCache                = true;
 std::mutex      StatCacheNode::cache_lock;
+unsigned long   StatCacheNode::DisableCheckingExpire           = 0L;
 
 //
 // Class Methods
@@ -159,6 +160,25 @@ bool StatCacheNode::SetNegativeCache(bool flag)
     bool old = UseNegativeCache;
     UseNegativeCache = flag;
     return old;
+}
+
+bool StatCacheNode::NeedExpireCheckHasLock()
+{
+    return (0L == StatCacheNode::DisableCheckingExpire);
+}
+
+void StatCacheNode::PreventExpireCheck()
+{
+    std::lock_guard<std::mutex> lock(StatCacheNode::cache_lock);
+    ++StatCacheNode::DisableCheckingExpire;
+}
+
+void StatCacheNode::ResumeExpireCheck()
+{
+    std::lock_guard<std::mutex> lock(StatCacheNode::cache_lock);
+    if(0 < StatCacheNode::DisableCheckingExpire){
+        --StatCacheNode::DisableCheckingExpire;
+    }
 }
 
 //-------------------------------------------------------------------
@@ -653,7 +673,7 @@ s3obj_type_map_t::size_type StatCacheNode::GetChildMap(s3obj_type_map_t& childma
 
 bool StatCacheNode::IsExpireStatCacheTimeHasLock() const
 {
-    if(StatCacheNode::IsEnableExpireTime()){
+    if(StatCacheNode::IsEnableExpireTime() && NeedExpireCheckHasLock()){
         if(IsExpireStatCacheTime(cache_date, StatCacheNode::GetExpireTime())){
             // this cache is expired
             return true;
@@ -1184,8 +1204,11 @@ bool DirStatCache::NeedTruncateProcessing()
     if(!StatCacheNode::IsEnableExpireTime()){
         return false;
     }
+    std::lock_guard<std::mutex> lock(StatCacheNode::cache_lock);
+    if(!NeedExpireCheckHasLock()){
+        return false;
+    }
     std::lock_guard<std::mutex> dircachelock(dir_cache_lock);
-
     return IsExpireStatCacheTime(last_check_date, StatCacheNode::GetExpireTime());
 }
 

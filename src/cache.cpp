@@ -113,6 +113,30 @@ bool StatCache::GetStat(const std::string& key, struct stat* pstbuf, headers_t* 
     return true;
 }
 
+bool StatCache::GetS3ObjList(const std::string& key, S3ObjList& list)
+{
+    const std::lock_guard<std::mutex> lock(StatCache::stat_cache_lock);
+
+    // find key(path) in cache
+    auto pStatCache = pMountPointDir->Find(key);
+    if(!pStatCache){
+        return false;
+    }
+
+    // get data
+    if(!pStatCache->GetS3ObjList(list)){
+        return false;
+    }
+
+    // hit cache
+    S3FS_PRN_DBG("Hit stat cache [path=%s][hit count=%lu]", key.c_str(), pStatCache->GetHitCount());
+
+    // for debug
+    //pMountPointDir->Dump(true);
+
+    return true;
+}
+
 bool StatCache::AddStatHasLock(const std::string& key, const struct stat* pstbuf, const headers_t* pmeta, objtype_t type, bool notruncate)
 {
     // Add(overwrite) new cache
@@ -157,6 +181,31 @@ bool StatCache::AddStat(const std::string& key, const struct stat& stbuf, objtyp
     const std::lock_guard<std::mutex> lock(StatCache::stat_cache_lock);
 
     return AddStatHasLock(key, &stbuf, nullptr, type, notruncate);
+}
+
+bool StatCache::AddS3ObjList(std::string& key, const S3ObjList& list)
+{
+    std::string _key = key;
+    if('/' != _key.back()){
+        _key += '/';
+    }
+
+    // Add
+    if(!pMountPointDir->AddS3ObjList(_key, list)){
+        S3FS_PRN_DBG("failed to add s3objlist to stat cache entry[path=%s]", _key.c_str());
+        return false;
+    }
+
+    // Truncate cache(if over cache size)
+    if(!pMountPointDir->TruncateCache()){
+        S3FS_PRN_DBG("There was no cache to truncate.");
+    }
+    S3FS_PRN_INFO3("add s3objlist to stat cache entry[path=%s]", _key.c_str());
+
+    // for debug
+    //pMountPointDir->Dump(true);
+
+    return true;
 }
 
 // [NOTE]

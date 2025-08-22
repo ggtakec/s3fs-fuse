@@ -183,7 +183,7 @@ bool StatCache::AddStat(const std::string& key, const struct stat& stbuf, objtyp
     return AddStatHasLock(key, &stbuf, nullptr, type, notruncate);
 }
 
-bool StatCache::AddS3ObjList(std::string& key, const S3ObjList& list)
+bool StatCache::AddS3ObjList(const std::string& key, const S3ObjList& list)
 {
     std::string _key = key;
     if('/' != _key.back()){

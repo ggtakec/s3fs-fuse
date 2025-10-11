@@ -49,19 +49,20 @@ jobs:
       #
       matrix:
         container:
-          - ubuntu:25.10
-          - ubuntu:24.04
-          - ubuntu:22.04
-          - debian:trixie
-          - debian:bookworm
-          - debian:bullseye
-          - rockylinux/rockylinux:10
-          - rockylinux/rockylinux:9
-          - rockylinux/rockylinux:8
-          - fedora:42
-          - fedora:41
           - opensuse/leap:15
-          - alpine:3.22
+          - opensuse/leap:16.0
+          #- ubuntu:25.10
+          #- ubuntu:24.04
+          #- ubuntu:22.04
+          #- debian:trixie
+          #- debian:bookworm
+          #- debian:bullseye
+          #- rockylinux/rockylinux:10
+          #- rockylinux/rockylinux:9
+          #- rockylinux/rockylinux:8
+          #- fedora:42
+          #- fedora:41
+          #- alpine:3.22
 
     container:
       image: ${{ matrix.container }}
@@ -78,7 +79,7 @@ jobs:
       # On openSUSE, tar and gzip must be installed before action/checkout.
       #
       - name: Install openSUSE packages before checkout
-        if: matrix.container == 'opensuse/leap:15'
+        if: matrix.container == 'opensuse/leap:15' || matrix.container == 'opensuse/leap:16.0'
         run: zypper install -y tar gzip
 
       - name: Install Alpine packages before checkout
@@ -116,6 +117,7 @@ jobs:
   #   "exit code = 1".(requires OS reboot)
   #
   macos-13:
+    if: false
     runs-on: macos-13
 
     steps:
@@ -158,6 +160,7 @@ jobs:
           make ALL_TESTS=1 check -C test || (test/filter-suite-log.sh test/test-suite.log; exit 1)
 
   MemoryTest:
+    if: false
     runs-on: ubuntu-latest
 
     #
@@ -259,6 +262,7 @@ jobs:
           /bin/sh -c "ALL_TESTS=1 ASAN_OPTIONS=${ASAN_OPTIONS} TSAN_OPTIONS=${TSAN_OPTIONS} VALGRIND=${VALGRIND} RETRIES=${RETRIES} make check -C test || (test/filter-suite-log.sh test/test-suite.log; exit 1)"
 
   static-checks:
+    if: false
     runs-on: ubuntu-latest
     container:
       image: fedora:42

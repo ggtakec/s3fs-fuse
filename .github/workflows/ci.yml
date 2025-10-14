@@ -144,9 +144,6 @@ jobs:
 
       - name: Build
         run: |
-          echo "-------------------------"
-          find / -name fuse.h
-          echo "-------------------------"
           ./autogen.sh
           PKG_CONFIG_PATH=/usr/local/opt/curl/lib/pkgconfig:/usr/local/opt/openssl/lib/pkgconfig ./configure
           make --jobs=$(sysctl -n hw.ncpu)

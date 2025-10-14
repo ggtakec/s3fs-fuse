@@ -213,7 +213,23 @@ function start_s3proxy {
         rm -f pjdfstest
         ln -s "pjd-pjdfstest-${PJDFSTEST_HASH:0:7}" pjdfstest
 
-        (cd pjdfstest && autoreconf -ifs && ./configure && make)
+#        (cd pjdfstest && autoreconf -ifs && ./configure && make)
+(
+    echo "----------------------------------------"
+    echo "[pjdfstest]"
+    cd pjdfstest || echo "Error to change directory to pjdfstest"
+    echo "----------------------------------------"
+    echo "[autoreconf -ifs]"
+    autoreconf -ifs || echo "Error to run autoreconf"
+    echo "----------------------------------------"
+    echo "[./configure]"
+    ./configure || echo "Error to run configure"
+    echo "----------------------------------------"
+    echo "[make]"
+    make || echo "Error to run make"
+    echo "----------------------------------------"
+    echo "Finish"
+)
     fi
 }
 

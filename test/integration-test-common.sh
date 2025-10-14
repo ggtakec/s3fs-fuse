@@ -157,8 +157,10 @@ function start_s3proxy {
         fi
     fi
 
+    echo "#### start_s3proxy"
     if [ -n "${S3PROXY_BINARY}" ]
     then
+        echo "#### start_s3proxy - PASS 1"
         if [ ! -e "${S3PROXY_BINARY}" ]; then
             curl "https://github.com/gaul/s3proxy/releases/download/s3proxy-${S3PROXY_VERSION}/s3proxy" \
                 --fail --location --silent --output "/tmp/${S3PROXY_BINARY}"
@@ -166,6 +168,7 @@ function start_s3proxy {
             mv "/tmp/${S3PROXY_BINARY}" "${S3PROXY_BINARY}"
             chmod +x "${S3PROXY_BINARY}"
         fi
+        echo "#### start_s3proxy - PASS 2"
 
         # generate self-signed SSL certificate
         #
@@ -180,29 +183,39 @@ function start_s3proxy {
         else
             S3PROXY_CACERT_FILE=""
         fi
+        echo "#### start_s3proxy - PASS 3"
 
         "${STDBUF_BIN}" -oL -eL java -jar "${S3PROXY_BINARY}" --properties "${S3PROXY_CONFIG}" &
         S3PROXY_PID=$!
+        echo "#### start_s3proxy - PASS 4"
 
         # wait for S3Proxy to start
         wait_for_port 8080
+        echo "#### start_s3proxy - PASS 5"
     fi
 
+    echo "#### start_s3proxy - PASS 6"
     if [ -n "${CHAOS_HTTP_PROXY}" ] || [ -n "${CHAOS_HTTP_PROXY_OPT}" ]; then
+        echo "#### start_s3proxy - PASS 7"
         if [ ! -e "${CHAOS_HTTP_PROXY_BINARY}" ]; then
+            echo "#### start_s3proxy - PASS 8"
             curl "https://github.com/bouncestorage/chaos-http-proxy/releases/download/chaos-http-proxy-${CHAOS_HTTP_PROXY_VERSION}/chaos-http-proxy" \
                 --fail --location --silent --output "/tmp/${CHAOS_HTTP_PROXY_BINARY}"
             echo "$CHAOS_HTTP_PROXY_HASH" "/tmp/${CHAOS_HTTP_PROXY_BINARY}" | sha256sum --check
             mv "/tmp/${CHAOS_HTTP_PROXY_BINARY}" "${CHAOS_HTTP_PROXY_BINARY}"
             chmod +x "${CHAOS_HTTP_PROXY_BINARY}"
         fi
+        echo "#### start_s3proxy - PASS 9"
 
         "${STDBUF_BIN}" -oL -eL java -jar "${CHAOS_HTTP_PROXY_BINARY}" --properties chaos-http-proxy.conf &
         CHAOS_HTTP_PROXY_PID=$!
+        echo "#### start_s3proxy - PASS 10"
 
         # wait for Chaos HTTP Proxy to start
         wait_for_port 1080
+        echo "#### start_s3proxy - PASS 11"
     fi
+    echo "#### start_s3proxy - PASS 12"
 
     if [ ! -d "pjd-pjdfstest-${PJDFSTEST_HASH:0:7}" ]; then
         curl "https://api.github.com/repos/pjd/pjdfstest/tarball/${PJDFSTEST_HASH}" \

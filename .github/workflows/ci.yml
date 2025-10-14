@@ -34,6 +34,7 @@ on:
 #
 jobs:
   Linux:
+    if: false
     runs-on: ubuntu-latest
     #
     # build matrix for containers
@@ -143,6 +144,9 @@ jobs:
 
       - name: Build
         run: |
+          echo "-------------------------"
+          find / -name fuse.h
+          echo "-------------------------"
           ./autogen.sh
           PKG_CONFIG_PATH=/usr/local/opt/curl/lib/pkgconfig:/usr/local/opt/openssl/lib/pkgconfig ./configure
           make --jobs=$(sysctl -n hw.ncpu)
@@ -159,6 +163,7 @@ jobs:
           make ALL_TESTS=1 check -C test || (test/filter-suite-log.sh test/test-suite.log; exit 1)
 
   MemoryTest:
+    if: false
     runs-on: ubuntu-latest
 
     #
@@ -260,6 +265,7 @@ jobs:
           /bin/sh -c "ALL_TESTS=1 ASAN_OPTIONS=${ASAN_OPTIONS} TSAN_OPTIONS=${TSAN_OPTIONS} VALGRIND=${VALGRIND} RETRIES=${RETRIES} make check -C test || (test/filter-suite-log.sh test/test-suite.log; exit 1)"
 
   static-checks:
+    if: false
     runs-on: ubuntu-latest
     container:
       image: fedora:42

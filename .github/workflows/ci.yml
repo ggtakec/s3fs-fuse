@@ -147,7 +147,7 @@ jobs:
         run: |
           ./autogen.sh
           PKG_CONFIG_PATH=/usr/local/opt/curl/lib/pkgconfig:/usr/local/opt/openssl/lib/pkgconfig ./configure
-          make
+          make --jobs=$(sysctl -n hw.ncpu)
 
       - name: Cppcheck
         run: make cppcheck

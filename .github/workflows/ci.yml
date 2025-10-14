@@ -133,7 +133,7 @@ jobs:
 
       - name: Install fuse-t
         run: |
-          if [ ! -d /usr/local/include ]; then mkdir -p /usr/local/include; echo "created /usr/local/include directory"; fi
+          if [ ! -d /usr/local/include ]; then sudo mkdir -p /usr/local/include; echo "created /usr/local/include directory"; fi
           HOMEBREW_NO_AUTO_UPDATE=1 brew install fuse-t
 
       - name: Install brew other packages

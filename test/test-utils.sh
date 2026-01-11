@@ -276,13 +276,15 @@ function run_suite {
    fi
 
    for t in "${TEST_LIST[@]}"; do
+       # Make random string(32bit)
+       RANDOM_32="$(( (RANDOM << 15) | RANDOM ))"
        # Ensure test input name differs every iteration
-       TEST_TEXT_FILE="test-s3fs-${RANDOM}.txt"
-       TEST_DIR="testdir-${RANDOM}"
+       TEST_TEXT_FILE="test-s3fs-${RANDOM_32}.txt"
+       TEST_DIR="testdir-${RANDOM_32}"
        # shellcheck disable=SC2034
-       ALT_TEST_TEXT_FILE="test-s3fs-ALT-${RANDOM}.txt"
+       ALT_TEST_TEXT_FILE="test-s3fs-ALT-${RANDOM_32}.txt"
        # shellcheck disable=SC2034
-       BIG_FILE="big-file-s3fs-${RANDOM}.txt"
+       BIG_FILE="big-file-s3fs-${RANDOM_32}.txt"
        # The following sequence runs tests in a subshell to allow continuation
        # on test failure, but still allowing errexit to be in effect during
        # the test.

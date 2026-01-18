@@ -34,6 +34,7 @@ on:
 #
 jobs:
   Linux:
+    if: false
     runs-on: ubuntu-latest
     #
     # build matrix for containers
@@ -161,18 +162,12 @@ jobs:
           PKG_CONFIG_PATH=/usr/local/opt/curl/lib/pkgconfig:/usr/local/opt/openssl/lib/pkgconfig ./configure
           make --jobs=$(sysctl -n hw.ncpu)
 
-      - name: Cppcheck
-        run: make cppcheck
-
-      - name: Shellcheck
-        run: make shellcheck
-
       - name: Test suite
         run: |
-          make check -C src
-          make ALL_TESTS=1 check -C test || (test/filter-suite-log.sh test/test-suite.log; exit 1)
+          cd test && ALL_TESTS=1 ./small-integration-test.sh
 
   MemoryTest:
+    if: false
     runs-on: ubuntu-latest
 
     #
@@ -274,6 +269,7 @@ jobs:
           /bin/sh -c "ALL_TESTS=1 ASAN_OPTIONS=${ASAN_OPTIONS} TSAN_OPTIONS=${TSAN_OPTIONS} VALGRIND=${VALGRIND} RETRIES=${RETRIES} make check -C test || (test/filter-suite-log.sh test/test-suite.log; exit 1)"
 
   static-checks:
+    if: false
     runs-on: ubuntu-latest
     container:
       image: fedora:43

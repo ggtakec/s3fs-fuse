@@ -2893,7 +2893,7 @@ function test_pjdfstest_utimensat() {
     prove -rv ../../pjdfstest/tests/utimensat/0[1-58-9].t
 }
 
-function add_all_tests {
+function add_all_tests_org {
     if s3fs_args | grep -q use_cache; then
         add_tests test_cache_file_stat
         add_tests test_zero_cache_file_stat
@@ -3057,6 +3057,23 @@ function add_all_tests {
             add_tests test_pjdfstest_symlink
         fi
     fi
+}
+
+function add_all_tests {
+    add_tests test_rm_rf_dir
+    add_tests test_copy_file
+    add_tests test_write_after_seek_ahead
+    add_tests test_overwrite_existing_file_range
+    add_tests test_concurrent_directory_updates
+    add_tests test_concurrent_reads
+    add_tests test_concurrent_writes
+    add_tests test_open_second_fd
+    add_tests test_write_multiple_offsets
+    add_tests test_write_multiple_offsets_backwards
+    add_tests test_content_type
+    add_tests test_truncate_cache
+    add_tests test_upload_sparsefile
+    add_tests test_mix_upload_entities
 }
 
 init_suite

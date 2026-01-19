@@ -3060,6 +3060,16 @@ function add_all_tests_org {
 }
 
 function add_all_tests {
+    add_tests test_rm_rf_dir
+    add_tests test_copy_file
+    add_tests test_write_after_seek_ahead
+    add_tests test_overwrite_existing_file_range
+    add_tests test_concurrent_directory_updates
+    add_tests test_concurrent_reads
+    add_tests test_concurrent_writes
+    add_tests test_open_second_fd
+    add_tests test_write_multiple_offsets
+    add_tests test_write_multiple_offsets_backwards
     add_tests test_content_type
     add_tests test_truncate_cache
     add_tests test_upload_sparsefile

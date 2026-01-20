@@ -164,7 +164,7 @@ jobs:
 
       - name: Test suite
         run: |
-          cd test && ALL_TESTS=1 ./small-integration-test.sh
+          cd test && ALL_TESTS=1 ./small-integration-test.sh >/tmp/test.log 2>&1 || (cat /tmp/test.log; exit 1) && cat /tmp/test.log
 
   MemoryTest:
     if: false

@@ -2125,7 +2125,7 @@ function test_truncate_cache() {
     done
 
     # shellcheck disable=SC2046
-    rm -rf $(seq 2) || (echo "ERROR in test_truncate_cache"; sleep 60)
+    rm -rf $(seq 2)
 }
 
 function test_cache_file_stat() {

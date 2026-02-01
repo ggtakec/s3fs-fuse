@@ -6226,6 +6226,8 @@ int main(int argc, char* argv[])
     // cleanup xml2
     xmlCleanupParser();
 
+//TEST
+/*
     S3FS_PRN_DBG("Number of head object requests: %llu", num_requests_head_object.load());
     S3FS_PRN_DBG("Number of put object requests: %llu", num_requests_put_object.load());
     S3FS_PRN_DBG("Number of get object requests: %llu", num_requests_get_object.load());
@@ -6236,6 +6238,18 @@ int main(int argc, char* argv[])
     S3FS_PRN_DBG("Number of abort MPU requests: %llu", num_requests_mpu_abort.load());
     S3FS_PRN_DBG("Number of upload MPU part requests: %llu", num_requests_mpu_upload_part.load());
     S3FS_PRN_DBG("Number of copy MPU part requests: %llu", num_requests_mpu_copy_part.load());
+*/
+    fprintf(stdout, "Number of head object requests: %llu", num_requests_head_object.load());
+    fprintf(stdout, "Number of put object requests: %llu", num_requests_put_object.load());
+    fprintf(stdout, "Number of get object requests: %llu", num_requests_get_object.load());
+    fprintf(stdout, "Number of delete object requests: %llu", num_requests_delete_object.load());
+    fprintf(stdout, "Number of list bucket requests: %llu", num_requests_list_bucket.load());
+    fprintf(stdout, "Number of initiate MPU requests: %llu", num_requests_mpu_initiate.load());
+    fprintf(stdout, "Number of complete MPU requests: %llu", num_requests_mpu_complete.load());
+    fprintf(stdout, "Number of abort MPU requests: %llu", num_requests_mpu_abort.load());
+    fprintf(stdout, "Number of upload MPU part requests: %llu", num_requests_mpu_upload_part.load());
+    fprintf(stdout, "Number of copy MPU part requests: %llu", num_requests_mpu_copy_part.load());
+//TEST
 
     exit(fuse_res);
 }

@@ -650,6 +650,7 @@ void* parallel_get_object_req_threadworker(S3fsCurl& s3fscurl, void* arg)
 //
 int head_request(const std::string& strpath, headers_t& header)
 {
+//    S3FS_PRN_ERR("[path=%s]", strpath.c_str());
     // parameter for thread worker
     head_req_thparam thargs;
     thargs.path   = strpath;
@@ -684,6 +685,7 @@ int head_request(const std::string& strpath, headers_t& header)
 //
 int multi_head_request(const std::string& strpath, SyncFiller& syncfiller, std::mutex& thparam_lock, int& retrycount, s3obj_list_t& notfound_list, bool use_wtf8, objtype_t objtype, int& result, Semaphore& sem)
 {
+//    S3FS_PRN_ERR("[path=%s]", strpath.c_str());
     // parameter for thread worker
     auto* thargs           = new multi_head_req_thparam;    // free in multi_head_req_threadworker
     thargs->path           = strpath;

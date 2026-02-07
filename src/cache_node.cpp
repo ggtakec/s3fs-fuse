@@ -1047,7 +1047,8 @@ bool DirStatCache::AddHasLock(const std::string& strpath, const struct stat* pst
         }else{
             std::lock_guard<std::mutex> dircachelock(dir_cache_lock);
             dir_cache_type = GetTypeHasLock();
-            ClearS3ObjListHasLock();
+S3FS_PRN_ERR("Clear S3ObjList : for %s", strpath.c_str());
+//            ClearS3ObjListHasLock();
         }
         if(!UpdateHasLock(pstat, pmeta, true) || !UpdateHasLock(is_notruncate) || !UpdateHasLock()){
             return false;
@@ -1120,6 +1121,7 @@ bool DirStatCache::AddHasLock(const std::string& strpath, const struct stat* pst
                 return false;
             }
             if(has_s3obj && !s3obj.HasName(strLeafName)){
+S3FS_PRN_ERR("Clear S3ObjList : for %s", strLeafName.c_str());
                 ClearS3ObjListHasLock();        // always true
             }
         }
@@ -1195,6 +1197,7 @@ bool DirStatCache::AddHasLock(const std::string& strpath, const struct stat* pst
                     return false;
                 }
                 if(has_s3obj && !s3obj.HasName(strLeafName)){
+S3FS_PRN_ERR("Clear S3ObjList : for %s", strLeafName.c_str());
                     ClearS3ObjListHasLock();        // always true
                 }
             }

@@ -1301,6 +1301,7 @@ static int s3fs_unlink(const char* _path)
     int         result;
 
     FUSE_CTX_INFO("[path=%s]", strPath.c_str());
+    S3FS_PRN_ERR("[path=%s]", strPath.c_str());
 
     if(0 != (result = check_parent_object_access(strPath.c_str(), W_OK | X_OK))){
         return result;
@@ -1357,6 +1358,7 @@ static int s3fs_rmdir(const char* _path)
     objtype_t   ObjType;
 
     FUSE_CTX_INFO("[path=%s]", path);
+    S3FS_PRN_ERR("[path=%s]", path);
 
     // keep stat cache without checking expiration
     //
@@ -2531,6 +2533,7 @@ static int update_mctime_parent_directory(const char* _path)
         S3FS_PRN_DBG("Updating parent directory stats is disabled");
         return 0;
     }
+S3FS_PRN_ERR("update_mctime_parent_directory : %s", _path);
 
     WTF8_ENCODE(path)
     int             result;
@@ -3420,6 +3423,7 @@ static int s3fs_opendir(const char* _path, struct fuse_file_info* fi)
 static int readdir_multi_head(const std::string& strpath, const S3ObjList& head, void* buf, fuse_fill_dir_t filler)
 {
     S3FS_PRN_INFO1("[path=%s][head=<%s>][filler=%p]", strpath.c_str(), head.IsEmpty() ? "empty" : "not empty", filler);
+    S3FS_PRN_ERR("[path=%s][head=<%s>][filler=%p]", strpath.c_str(), head.IsEmpty() ? "empty" : "not empty", filler);
 
     // Make base path list.
     s3obj_type_map_t headmap;
@@ -3600,6 +3604,7 @@ static int list_bucket(const char* path, S3ObjList& head, const char* delimiter,
     bool truncated = true;
 
     S3FS_PRN_INFO1("[path=%s]", path);
+    S3FS_PRN_ERR("[path=%s]", path);
 
     if(delimiter && 0 < strlen(delimiter)){
         query_delimiter += "delimiter=";
@@ -6239,16 +6244,16 @@ int main(int argc, char* argv[])
     S3FS_PRN_DBG("Number of upload MPU part requests: %llu", num_requests_mpu_upload_part.load());
     S3FS_PRN_DBG("Number of copy MPU part requests: %llu", num_requests_mpu_copy_part.load());
 */
-    fprintf(stdout, "Number of head object requests: %llu", num_requests_head_object.load());
-    fprintf(stdout, "Number of put object requests: %llu", num_requests_put_object.load());
-    fprintf(stdout, "Number of get object requests: %llu", num_requests_get_object.load());
-    fprintf(stdout, "Number of delete object requests: %llu", num_requests_delete_object.load());
-    fprintf(stdout, "Number of list bucket requests: %llu", num_requests_list_bucket.load());
-    fprintf(stdout, "Number of initiate MPU requests: %llu", num_requests_mpu_initiate.load());
-    fprintf(stdout, "Number of complete MPU requests: %llu", num_requests_mpu_complete.load());
-    fprintf(stdout, "Number of abort MPU requests: %llu", num_requests_mpu_abort.load());
-    fprintf(stdout, "Number of upload MPU part requests: %llu", num_requests_mpu_upload_part.load());
-    fprintf(stdout, "Number of copy MPU part requests: %llu", num_requests_mpu_copy_part.load());
+    fprintf(stdout, "Number of head object requests: %llu\n", num_requests_head_object.load());
+    fprintf(stdout, "Number of put object requests: %llu\n", num_requests_put_object.load());
+    fprintf(stdout, "Number of get object requests: %llu\n", num_requests_get_object.load());
+    fprintf(stdout, "Number of delete object requests: %llu\n", num_requests_delete_object.load());
+    fprintf(stdout, "Number of list bucket requests: %llu\n", num_requests_list_bucket.load());
+    fprintf(stdout, "Number of initiate MPU requests: %llu\n", num_requests_mpu_initiate.load());
+    fprintf(stdout, "Number of complete MPU requests: %llu\n", num_requests_mpu_complete.load());
+    fprintf(stdout, "Number of abort MPU requests: %llu\n", num_requests_mpu_abort.load());
+    fprintf(stdout, "Number of upload MPU part requests: %llu\n", num_requests_mpu_upload_part.load());
+    fprintf(stdout, "Number of copy MPU part requests: %llu\n", num_requests_mpu_copy_part.load());
 //TEST
 
     exit(fuse_res);

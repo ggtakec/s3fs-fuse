@@ -63,7 +63,8 @@ if [ -n "${ALL_TESTS}" ]; then
     )
 else
     FLAGS=(
-        sigv4
+        "use_cache=${CACHE_DIR} -o ensure_diskfree=${ENSURE_DISKFREE_SIZE} -o fake_diskfree=${FAKE_FREE_DISK_SIZE} -o use_xattr -o update_parent_dir_stat"
+#        sigv4
     )
 fi
 

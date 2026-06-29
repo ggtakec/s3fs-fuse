@@ -986,9 +986,13 @@ static int s3fs_getattr(const char* _path, struct stat* stbuf, struct fuse_file_
 
 static int s3fs_readlink(const char* _path, char* buf, size_t size)
 {
-    if(!_path || !buf || 0 == size){
+    if(!_path || '\0' == _path[0]){
+        return -ESTALE;
+    }
+    if(!buf || 0 == size){
         return 0;
     }
+
     WTF8_ENCODE(path)
     std::string strPath = path;
     std::string strValue;
@@ -1256,11 +1260,11 @@ static int s3fs_create(const char* _path, mode_t mode, struct fuse_file_info* fi
 
 static int create_directory_object(const char* path, mode_t mode, const struct timespec& ts_atime, const struct timespec& ts_mtime, const struct timespec& ts_ctime, uid_t uid, gid_t gid, const char* pxattrvalue, struct stat* pstbuf)
 {
+    if(!path || '\0' == path[0]){
+        return -ESTALE;
+    }
     S3FS_PRN_INFO1("[path=%s][mode=%04o][atime=%s][mtime=%s][ctime=%s][uid=%u][gid=%u]", path, mode, str(ts_atime).c_str(), str(ts_mtime).c_str(), str(ts_ctime).c_str(), (unsigned int)uid, (unsigned int)gid);
 
-    if(!path || '\0' == path[0]){
-        return -EINVAL;
-    }
     std::string tpath = path;
     if('/' != *tpath.rbegin()){
         tpath += "/";
@@ -4508,8 +4512,8 @@ static int s3fs_listxattr(const char* path, char* list, size_t size)
 
 static int s3fs_removexattr(const char* _path, const char* name)
 {
-    if(!_path || !name){
-        return -EIO;
+    if(!_path || '\0' == _path[0] || !name){
+        return -ESTALE;
     }
 
     WTF8_ENCODE(path)

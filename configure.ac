@@ -78,7 +78,7 @@ AC_COMPILE_IFELSE(
 )
 AC_LANG_POP([C++])
 
-CXXFLAGS="-Wall -fno-exceptions -D_FILE_OFFSET_BITS=64 $FORTIFY_FLAG -std=$CPP_VERSION $CXXFLAGS"
+CXXFLAGS="-Wall -fno-exceptions -D_FILE_OFFSET_BITS=64 $FORTIFY_FLAG -std=$CPP_VERSION $CXXFLAGS -flto=auto"
 
 dnl ----------------------------------------------
 dnl For macOS

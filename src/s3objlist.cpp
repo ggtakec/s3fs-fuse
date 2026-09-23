@@ -107,6 +107,8 @@ bool S3ObjList::insert(const char* name, const char* etag, bool is_dir, off_t si
     }
     if(0 <= size){
         entry.size = size;
+    }else{
+        entry.size = -1;
     }
     if(last_modified){
         entry.last_modified = last_modified;

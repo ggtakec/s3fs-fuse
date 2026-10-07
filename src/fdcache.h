@@ -37,7 +37,6 @@ class FdManager
       static std::mutex      fd_manager_lock;
       static std::mutex      cache_cleanup_lock;
       static std::mutex      reserved_diskspace_lock;
-      static std::mutex      except_entmap_lock;
       static std::string     cache_dir;
       static bool            check_cache_dir_exist;
       static off_t           free_disk_space GUARDED_BY(reserved_diskspace_lock);  // limit free disk space
@@ -48,7 +47,6 @@ class FdManager
       static std::string     tmp_dir;
 
       fdent_map_t            fent GUARDED_BY(fd_manager_lock);
-      fdent_map_t            except_fent GUARDED_BY(except_entmap_lock);  // A map of delayed deletion fdentity
 
   private:
       static off_t GetFreeDiskSpaceHasLock(const char* path) REQUIRES(FdManager::reserved_diskspace_lock);
@@ -57,9 +55,10 @@ class FdManager
       static int GetVfsStat(const char* path, struct statvfs* vfsbuf);
       static off_t GetEnsureFreeDiskSpaceHasLock() REQUIRES(FdManager::reserved_diskspace_lock);
 
+      fdent_map_t::iterator FindFdEntityHasLock(const std::string& path) REQUIRES(fd_manager_lock);
+
       // Returns the number of open pseudo fd.
       int GetPseudoFdCount(const char* path) REQUIRES(fd_manager_lock);
-      bool UpdateEntityToTempPath() REQUIRES(fd_manager_lock);
       void CleanupCacheDirInternal(const std::string &path = "") REQUIRES(cache_cleanup_lock);
       bool RawCheckAllCache(FILE* fp, const char* cache_stat_top_dir, const char* sub_path, int& total_file_cnt, int& err_file_cnt, int& err_dir_cnt);
 
@@ -93,7 +92,6 @@ class FdManager
       static const char* GetCacheCheckOutput() { return FdManager::check_cache_output.c_str(); }
       static bool MakeCachePath(const char* path, std::string& cache_path, bool is_create_dir = true, cache_dir_type_t dir_type = cache_dir_type_t::FILE);
       static bool CheckCacheTopDir();
-      static bool MakeRandomTempPath(const char* path, std::string& tmppath);
       static bool MakeHiddenTempPath(const char* path, std::string& tmppath);
       static bool SetCheckCacheDirExist(bool is_check);
       static bool CheckCacheDirExist();
@@ -127,7 +125,6 @@ class FdManager
       FdEntity* OpenExistFdEntity(const char* path, int& fd, int flags = O_RDONLY);
       void Rename(const std::string &from, const std::string &to);
       bool Close(FdEntity* ent, int fd);
-      bool ChangeEntityToTempPath(std::shared_ptr<FdEntity> ent, const char* path);
       void CleanupCacheDir();
 
       bool CheckAllCache();

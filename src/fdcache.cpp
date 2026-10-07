@@ -61,26 +61,23 @@
 #define CACHEDBG_FMT_PROB_BLOCK "                  0x%016zx(0x%016zx bytes)"
 
 // [NOTE]
-// NOCACHE_PATH_PREFIX symbol needs for not using cache mode.
-// Now s3fs I/F functions in s3fs.cpp has left the processing
-// to FdManager and FdEntity class. FdManager class manages
-// the list of local file stat and file descriptor in conjunction
-// with the FdEntity class.
-// When s3fs is not using local cache, it means FdManager must
-// return new temporary file descriptor at each opening it.
-// Then FdManager caches fd by key which is dummy file path
-// instead of real file path.
-// This process may not be complete, but it is easy way can
-// be realized.
+// When cache mode is not used, hidden files are employed.
+// Currently, processing within the s3fs interface functions in
+// s3fs.cpp is delegated to the FdManager and FdEntity classes.
+// The FdManager class works in conjunction with the FdEntity
+// class to manage local file status information and lists of
+// file descriptors(fds).
+// When local caching is not used, FdManager must return a new,
+// temporary file descriptor each time a file is opened.
+// In doing so, FdManager caches the file descriptor using a
+// unique hidden file path as the key for each instance.
 //
-static constexpr char NOCACHE_PATH_PREFIX_FORM[] = " __S3FS_UNEXISTED_PATH_%lx__ / ";  // important space words for simply
-
 // [NOTE]
 // Including '\001'(^A) ensures there are no conflicts with
 // files in object storage. Object storage does not allow the
 // creation of object names containing control codes.
 //
-static constexpr char HIDDEN_PATH_PREFIX_FORM[]  = ".hidden_\001_%lx";                 // for hidden file
+static constexpr char HIDDEN_PATH_PREFIX_FORM[]  = ".hidden_\001%lx";       // for hidden file
 
 //------------------------------------------------
 // FdManager class variable
@@ -88,7 +85,6 @@ static constexpr char HIDDEN_PATH_PREFIX_FORM[]  = ".hidden_\001_%lx";          
 std::mutex      FdManager::fd_manager_lock;
 std::mutex      FdManager::cache_cleanup_lock;
 std::mutex      FdManager::reserved_diskspace_lock;
-std::mutex      FdManager::except_entmap_lock;
 std::string     FdManager::cache_dir;
 bool            FdManager::check_cache_dir_exist(false);
 off_t           FdManager::free_disk_space = 0;
@@ -218,17 +214,6 @@ bool FdManager::CheckCacheTopDir()
     std::string toppath(FdManager::cache_dir + "/" + S3fsCred::GetBucket());
 
     return check_exist_dir_permission(toppath.c_str());
-}
-
-bool FdManager::MakeRandomTempPath(const char* path, std::string& tmppath)
-{
-    char szBuff[64];
-
-    snprintf(szBuff, sizeof(szBuff), NOCACHE_PATH_PREFIX_FORM, random());   // worry for performance, but maybe don't worry.
-    szBuff[sizeof(szBuff) - 1] = '\0';                                      // for safety
-    tmppath  = szBuff;
-    tmppath += path ? path : "";
-    return true;
 }
 
 bool FdManager::MakeHiddenTempPath(const char* path, std::string& tmppath)
@@ -484,7 +469,32 @@ FdManager::~FdManager()
         S3FS_PRN_WARN("To exit with the cache file opened: path=%s, refcnt=%d", ent->GetPath().c_str(), ent->GetOpenCount());
     }
     fent.clear();
-    except_fent.clear();
+}
+
+fdent_map_t::iterator FdManager::FindFdEntityHasLock(const std::string& path)
+{
+    auto iter = fent.find(path);
+    if(fent.end() == iter){
+        return fent.end();
+    }
+
+    // This is a hidden cache hit returned by fent[path]
+    //
+    // This situation occurs when a cache is set to hidden via FdEntity::RenamePath.
+    // Renaming the fent key directly inside FdEntity::RenamePath causes a deadlock,
+    // therefore, it cannot be executed there and is instead detected at this point.
+    // When detected, if the file is open, the key name will be updated.
+    //
+    if(iter->second->IsHidden()){
+        std::string tmppath;
+        FdManager::MakeHiddenTempPath(path.c_str(), tmppath);
+
+        fent[tmppath] = std::move(iter->second);
+        fent.erase(iter);
+        return fent.end();
+    }
+
+    return iter;
 }
 
 FdEntity* FdManager::GetFdEntityHasLock(const char* path, int& existfd, bool newfd)
@@ -495,9 +505,7 @@ FdEntity* FdManager::GetFdEntityHasLock(const char* path, int& existfd, bool new
         return nullptr;
     }
 
-    UpdateEntityToTempPath();
-
-    if(auto fiter = fent.find(path); fent.cend() != fiter && fiter->second){
+    if(auto fiter = FindFdEntityHasLock(path); fent.cend() != fiter && fiter->second){
         if(-1 == existfd){
             if(newfd){
                 existfd = fiter->second->OpenPseudoFd(O_RDWR);    // [NOTE] O_RDWR flags
@@ -549,10 +557,8 @@ FdEntity* FdManager::Open(int& fd, const char* path, const headers_t* pmeta, off
 
     const std::lock_guard<std::mutex> lock(FdManager::fd_manager_lock);
 
-    UpdateEntityToTempPath();
-
     // search in mapping by key(path)
-    auto iter = fent.find(path);
+    auto iter = FindFdEntityHasLock(path);
     if(fent.end() == iter && !force_tmpfile && !FdManager::IsCacheDir()){
         // If the cache directory is not specified, s3fs opens a temporary file
         // when the file is opened.
@@ -611,15 +617,14 @@ FdEntity* FdManager::Open(int& fd, const char* path, const headers_t* pmeta, off
             // using cache
             return fent.try_emplace(path, std::move(ent)).first->second.get();
         }else{
-            // not using cache, so the key of fdentity is set not really existing path.
-            // (but not strictly unexisting path.)
-            //
-            // [NOTE]
-            // The reason why this process here, please look at the definition of the
-            // comments of NOCACHE_PATH_PREFIX_FORM symbol.
+            // Since caching is not used, the path to the hidden directory is set as the
+            // key for fdEntity. (However, the path is merely being set, as the cache is
+            // not actually utilized.)
+            // As a result, it becomes impossible to locate the fdEntity via the path,
+            // and the fdEntity cannot be reached.
             //
             std::string tmppath;
-            FdManager::MakeRandomTempPath(path, tmppath);
+            FdManager::MakeHiddenTempPath(path, tmppath);
             return fent.try_emplace(tmppath, std::move(ent)).first->second.get();
         }
     }else{
@@ -637,25 +642,22 @@ FdEntity* FdManager::GetExistFdEntity(const char* path, int existfd)
 
     const std::lock_guard<std::mutex> lock(FdManager::fd_manager_lock);
 
-    UpdateEntityToTempPath();
-
     // If use_cache is disabled, or the disk space is insufficient when use_cache
     // is enabled, the corresponding key of the entity in fent is not path.
-    if(auto iter = fent.find(std::string(path)); fent.end() != iter){
-      if(iter->second && iter->second->FindPseudoFd(existfd)){
-        return iter->second.get();
-      }
-    } else {
-      // no matter use_cache is enabled or not, search from all entities to
-      // find the entity with the same path. And then compare the pseudo fd.
-      for(const auto& [entpath, entity] : fent) {
-        // GetROPath() holds ro_path_lock rather than fdent_lock.
-        // Therefore GetExistFdEntity does not contends with FdEntity::Read() / Write().
-        if(entity && (entity->GetROPath() == path)
-           && entity->FindPseudoFd(existfd)) {
-          return entity.get();
+    if(auto iter = FindFdEntityHasLock(std::string(path)); fent.end() != iter){
+        if(iter->second && iter->second->FindPseudoFd(existfd)){
+            return iter->second.get();
         }
-      }
+    }else{
+        // no matter use_cache is enabled or not, search from all entities to
+        // find the entity with the same path. And then compare the pseudo fd.
+        for(const auto& [entpath, entity] : fent) {
+            // GetROPath() holds ro_path_lock rather than fdent_lock.
+            // Therefore GetExistFdEntity does not contends with FdEntity::Read() / Write().
+            if(entity && (entity->GetROPath() == path) && entity->FindPseudoFd(existfd)){
+                return entity.get();
+            }
+        }
     }
 
     // not found entity
@@ -680,8 +682,6 @@ FdEntity* FdManager::GetFdEntityByPseudoFd(int existfd)
     }
 
     const std::lock_guard<std::mutex> lock(FdManager::fd_manager_lock);
-
-    UpdateEntityToTempPath();
 
     for(const auto& [entpath, entity] : fent){
         if(entity && entity->FindPseudoFd(existfd)){
@@ -722,8 +722,6 @@ int FdManager::GetPseudoFdCount(const char* path)
         return 0;
     }
 
-    UpdateEntityToTempPath();
-
     // search from all entity.
     for(const auto& [entpath, entity] : fent){
         if(entity && entity->GetPath() == path){
@@ -739,9 +737,7 @@ void FdManager::Rename(const std::string &from, const std::string &to)
 {
     const std::lock_guard<std::mutex> lock(FdManager::fd_manager_lock);
 
-    UpdateEntityToTempPath();
-
-    auto iter = fent.find(from);
+    auto iter = FindFdEntityHasLock(from);
     if(fent.end() == iter && !FdManager::IsCacheDir()){
         // If the cache directory is not specified, s3fs opens a temporary file
         // when the file is opened.
@@ -756,7 +752,7 @@ void FdManager::Rename(const std::string &from, const std::string &to)
     }
 
     // If a cache for the "to" file exists, change its status to hidden.
-    auto to_iter = fent.find(to);
+    auto to_iter = FindFdEntityHasLock(to);
     if(fent.end() == to_iter){
         // retry, search from all entities to find the entity with the same path.
         for(to_iter = fent.begin(); to_iter != fent.end(); ++to_iter){
@@ -817,8 +813,6 @@ bool FdManager::Close(FdEntity* ent, int fd)
     }
     const std::lock_guard<std::mutex> lock(FdManager::fd_manager_lock);
 
-    UpdateEntityToTempPath();
-
     for(auto iter = fent.cbegin(); iter != fent.cend(); ++iter){
         if(iter->second.get() == ent){
             ent->Close(fd);
@@ -839,56 +833,6 @@ bool FdManager::Close(FdEntity* ent, int fd)
         }
     }
     return false;
-}
-
-bool FdManager::ChangeEntityToTempPath(std::shared_ptr<FdEntity> ent, const char* path)
-{
-    // [NOTE]
-    // This method only stages the entity into the except_fent map, which is
-    // guarded by except_entmap_lock.  It must NOT acquire fd_manager_lock here:
-    // this method is called from FdEntity::NoCacheLoadAndPost while the entity
-    // locks are held, and fd_manager_lock is always acquired before the entity
-    // locks elsewhere (e.g. FdManager::Close).  Acquiring fd_manager_lock here
-    // would invert the lock order and can deadlock the whole mount.
-    //
-    // Whether "path" is still mapped to this entity in fent -- and therefore
-    // whether it actually needs to be re-keyed to a temporary path -- is decided
-    // later in UpdateEntityToTempPath, which already runs under fd_manager_lock.
-    //
-    const std::lock_guard<std::mutex> lock(FdManager::except_entmap_lock);
-    except_fent[path] = std::move(ent);
-
-    return true;
-}
-
-bool FdManager::UpdateEntityToTempPath()
-{
-    const std::lock_guard<std::mutex> lock(FdManager::except_entmap_lock);
-
-    for(auto except_iter = except_fent.cbegin(); except_iter != except_fent.cend(); ){
-        if(auto iter = fent.find(except_iter->first); fent.cend() != iter && iter->second.get() == except_iter->second.get()){
-            // The path is still mapped to this entity, so move it to a new
-            // temporary key.
-            std::string tmppath;
-            FdManager::MakeRandomTempPath(except_iter->first.c_str(), tmppath);
-
-            fent[tmppath] = std::move(iter->second);
-            fent.erase(iter);
-            except_iter   = except_fent.erase(except_iter);
-        }else{
-            // [NOTE]
-            // The path is no longer mapped to this entity in fent.  This happens
-            // when a cache directory has not been specified, or when
-            // NoCacheLoadAndPost has already moved this entity to a temporary
-            // path.  In either case the entity is already registered correctly,
-            // so just drop the staging entry without creating a new fent mapping.
-            // (This is the case the old fd_manager_lock guarded pre-check in
-            // ChangeEntityToTempPath used to filter out.)
-            //
-            except_iter = except_fent.erase(except_iter);
-        }
-    }
-    return true;
 }
 
 void FdManager::CleanupCacheDir()
@@ -949,9 +893,7 @@ void FdManager::CleanupCacheDirInternal(const std::string &path)
                 S3FS_PRN_INFO("could not get fd_manager_lock when clean up file(%s), then skip it.", next_path.c_str());
                 continue;
             }
-            UpdateEntityToTempPath();
-
-            if(auto iter = fent.find(next_path); fent.cend() == iter) {
+            if(auto iter = FindFdEntityHasLock(next_path); fent.cend() == iter) {
                 S3FS_PRN_DBG("cleaned up: %s", next_path.c_str());
                 FdManager::DeleteCacheFile(next_path.c_str(), false);   // if hidden=true, it is deleted when the fdentity is deleted.
             }
@@ -1064,9 +1006,7 @@ bool FdManager::RawCheckAllCache(FILE* fp, const char* cache_stat_top_dir, const
             {
                 const std::lock_guard<std::mutex> lock(FdManager::fd_manager_lock);
 
-                UpdateEntityToTempPath();
-
-                if(auto iter = fent.find(object_file_path); fent.cend() != iter){
+                if(auto iter = FindFdEntityHasLock(object_file_path); fent.cend() != iter){
                     // This file is opened now, then we need to put warning message.
                     strOpenedWarn = CACHEDBG_FMT_WARN_OPEN;
                 }

@@ -1371,7 +1371,7 @@ static int s3fs_unlink(const char* _path)
 
     // remove file cache and stat cache
     StatCache::getStatCacheData()->DelStat(strPath);
-    FdManager::DeleteCacheFile(strPath.c_str());
+    FdManager::DeleteCacheFile(strPath.c_str(), false);     // if hidden=true, it is deleted when the fdentity is deleted.
 
     // update parent directory timestamp
     int update_result;

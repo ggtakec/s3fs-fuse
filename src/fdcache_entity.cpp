@@ -169,7 +169,7 @@ void FdEntity::Clear()
             //
             ino_t cur_inode = GetInode();
             if(0 != cur_inode && cur_inode == inode){
-                CacheFileStat cfstat(path.c_str());
+                CacheFileStat cfstat(path.c_str(), hidden.load());
                 if(!pagelist.Serialize(cfstat, inode)){
                     S3FS_PRN_WARN("failed to save cache stat file(%s).", path.c_str());
                 }
@@ -184,6 +184,22 @@ void FdEntity::Clear()
                 S3FS_PRN_WARN("failed to remove mirror cache file(%s) by errno(%d).", mirrorpath.c_str(), errno);
             }
             mirrorpath.clear();
+        }
+    }
+
+    // [NOTE]
+    // If the cache is in a hidden state, the file cache and Stats cache will be deleted.
+    // Regardless of its hidden state, the mirror file is created in the same cache directory
+    // and automatically deleted upon close, so no action is required.
+    //
+    if(hidden.load()){
+        if(!CacheFileStat::DeleteCacheFileStat(path.c_str(), hidden.load())){
+            S3FS_PRN_DBG("failed to remove stats cache file for %s, but continue...", path.c_str());
+        }
+        if(!cachepath.empty()){
+            if(-1 == unlink(cachepath.c_str())){
+                S3FS_PRN_DBG("failed to remove cache file(%s) by errno(%d), but continue...", cachepath.c_str(), errno);
+            }
         }
     }
     pagelist.Init(0, false, false);
@@ -241,7 +257,7 @@ void FdEntity::Close(int fd)
             //
             ino_t cur_inode = GetInode();
             if(0 != cur_inode && cur_inode == inode){
-                CacheFileStat cfstat(path.c_str());
+                CacheFileStat cfstat(path.c_str(), hidden.load());
                 if(!pagelist.Serialize(cfstat, inode)){
                     S3FS_PRN_WARN("failed to save cache stat file(%s).", path.c_str());
                 }
@@ -313,7 +329,7 @@ int FdEntity::OpenMirrorFile()
 
     // make temporary directory
     std::string bupdir;
-    if(!FdManager::MakeCachePath(nullptr, bupdir, true, true)){
+    if(!FdManager::MakeCachePath(nullptr, bupdir, true, FdManager::cache_dir_type_t::MIRROR)){
         S3FS_PRN_ERR("could not make bup cache directory path or create it.");
         return -EIO;
     }
@@ -467,7 +483,7 @@ int FdEntity::Open(const headers_t* pmeta, off_t size, const FileTimes& ts_times
             }
 
             // open cache and cache stat file, load page info.
-            pcfstat = std::make_unique<CacheFileStat>(path.c_str());
+            pcfstat = std::make_unique<CacheFileStat>(path.c_str(), hidden.load());   // in this case, always hidden = false
 
             // try to open cache file
             if( -1 != (physical_fd = open(cachepath.c_str(), O_RDWR)) &&
@@ -518,7 +534,7 @@ int FdEntity::Open(const headers_t* pmeta, off_t size, const FileTimes& ts_times
                     S3FS_PRN_ERR("failed to open file(%s). errno(%d)", cachepath.c_str(), open_errno);
 
                     // remove cache stat file if it is existed
-                    if(0 != (result = CacheFileStat::DeleteCacheFileStat(path.c_str()))){
+                    if(0 != (result = CacheFileStat::DeleteCacheFileStat(path.c_str(), hidden.load()))){      // in this case, always hidden = false
                         if(-ENOENT != result){
                             S3FS_PRN_WARN("failed to delete current cache stat file(%s) by errno(%d), but continue...", path.c_str(), result);
                         }
@@ -705,7 +721,7 @@ int FdEntity::LoadAll(int fd, off_t* size, bool force_load)
 // The mirror file descriptor is also the same. The mirror file path does
 // not need to be changed and will remain as it is.
 //
-bool FdEntity::RenamePath(const std::string& newpath, std::string& fentmapkey)
+bool FdEntity::RenamePath(const std::string& newpath, std::string& fentmapkey, bool new_hidden)
 {
     const std::lock_guard<std::mutex> lock(fdent_lock);
     const std::lock_guard<std::mutex> data_lock(fdent_data_lock);
@@ -715,7 +731,7 @@ bool FdEntity::RenamePath(const std::string& newpath, std::string& fentmapkey)
 
         // make new cache path
         std::string newcachepath;
-        if(!FdManager::MakeCachePath(newpath.c_str(), newcachepath, true)){
+        if(!FdManager::MakeCachePath(newpath.c_str(), newcachepath, true, (new_hidden ? FdManager::cache_dir_type_t::HIDDEN : FdManager::cache_dir_type_t::FILE))){
           S3FS_PRN_ERR("failed to make cache path for object(%s).", newpath.c_str());
           return false;
         }
@@ -727,7 +743,7 @@ bool FdEntity::RenamePath(const std::string& newpath, std::string& fentmapkey)
         }
 
         // link and unlink cache file stat
-        if(!CacheFileStat::RenameCacheFileStat(path.c_str(), newpath.c_str())){
+        if(!CacheFileStat::RenameCacheFileStat(path.c_str(), new_hidden, newpath.c_str(), new_hidden)){
           S3FS_PRN_ERR("failed to rename cache file stat(%s to %s).", path.c_str(), newpath.c_str());
           return false;
         }
@@ -739,6 +755,8 @@ bool FdEntity::RenamePath(const std::string& newpath, std::string& fentmapkey)
         fentmapkey.clear();
         FdManager::MakeRandomTempPath(newpath.c_str(), fentmapkey);
     }
+    hidden.store(new_hidden);
+
     // set new path
     path = newpath;
 
@@ -1039,7 +1057,7 @@ int FdEntity::NoCacheLoadAndPost(PseudoFdInfo* pseudo_obj, off_t start, off_t si
     //
     if(!cachepath.empty()){
         // remove cache files(and cache stat file)
-        FdManager::DeleteCacheFile(path.c_str());
+        FdManager::DeleteCacheFile(path.c_str(), hidden.load());
         // cache file path does not use no more.
         cachepath.clear();
         mirrorpath.clear();
@@ -1333,7 +1351,7 @@ int FdEntity::RowFlushHasLock(int fd, const char* tpath, bool force_sync)
     // the cache file may not be correct. So delete cache files.
     //
     if(0 != result && !cachepath.empty()){
-        FdManager::DeleteCacheFile(tpath);
+        FdManager::DeleteCacheFile(tpath, hidden.load());
     }
 
     // [NOTE]
@@ -1347,7 +1365,7 @@ int FdEntity::RowFlushHasLock(int fd, const char* tpath, bool force_sync)
     if(0 == result && !cachepath.empty()){
         ino_t cur_inode = GetInode();
         if(0 != cur_inode && cur_inode == inode){
-            CacheFileStat cfstat(path.c_str());
+            CacheFileStat cfstat(path.c_str(), hidden.load());
             if(!pagelist.Serialize(cfstat, inode)){
                 S3FS_PRN_WARN("failed to save cache stat file(%s).", path.c_str());
             }

@@ -31,20 +31,21 @@ class CacheFileStat
     private:
         std::string path;
         int         fd;
+        bool        hidden;
 
     private:
-        static int MakeCacheFileStatPath(const char* path, std::string& sfile_path, bool is_create_dir = true);
+        static int MakeCacheFileStatPath(const char* path, std::string& sfile_path, bool is_create_dir = true, bool hidden = false);
 
         bool RawOpen(bool readonly);
 
     public:
-        static std::string GetCacheFileStatTopDir();
-        static int DeleteCacheFileStat(const char* path);
+        static std::string GetCacheFileStatTopDir(bool hidden = false);
+        static int DeleteCacheFileStat(const char* path, bool hidden = false);
         static bool CheckCacheFileStatTopDir();
         static bool DeleteCacheFileStatDirectory();
-        static bool RenameCacheFileStat(const char* oldpath, const char* newpath);
+        static bool RenameCacheFileStat(const char* oldpath, bool old_hidden, const char* newpath, bool new_hidden);
 
-        explicit CacheFileStat(const char* tpath = nullptr);
+        explicit CacheFileStat(const char* tpath = nullptr, bool hidden_stat = false);
         ~CacheFileStat();
         CacheFileStat(const CacheFileStat&) = delete;
         CacheFileStat(CacheFileStat&&) = delete;

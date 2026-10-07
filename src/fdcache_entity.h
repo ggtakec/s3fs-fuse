@@ -80,6 +80,7 @@ class FdEntity : public std::enable_shared_from_this<FdEntity>
         FileTimes          timestamps     GUARDED_BY(fdent_data_lock);   // file timestamps(atime/ctime/mtime)
         mutable std::mutex ro_path_lock;                                 // for only the ro_path variable
         std::string        ro_path        GUARDED_BY(ro_path_lock);      // holds the same value as "path". this is used as a backup(read-only variable) by special functions only.
+        std::atomic<bool>  hidden{false};                                // a temporary hidden file(after removing an open file)
 
     private:
         static int FillFile(int fd, unsigned char byte, off_t size, off_t start);
@@ -151,6 +152,9 @@ class FdEntity : public std::enable_shared_from_this<FdEntity>
             const std::lock_guard<std::mutex> ro_lock(ro_path_lock);
             return ro_path;
         }
+        bool IsHidden() const {
+            return hidden.load();
+        }
         [[nodiscard]] int Open(const headers_t* pmeta, off_t size, const FileTimes& ts_times, int flags);
 
         [[nodiscard]] int LoadAll(int fd, off_t* size = nullptr, bool force_load = false);
@@ -170,7 +174,7 @@ class FdEntity : public std::enable_shared_from_this<FdEntity>
             const std::lock_guard<std::mutex> lock(fdent_lock);
             return path;
         }
-        bool RenamePath(const std::string& newpath, std::string& fentmapkey);
+        bool RenamePath(const std::string& newpath, std::string& fentmapkey, bool new_hidden);
         int GetPhysicalFd() const REQUIRES(FdEntity::fdent_lock) { return physical_fd; }
         bool IsModified() const;
         bool MergeOrgMeta(headers_t& updatemeta);

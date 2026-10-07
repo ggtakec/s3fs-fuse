@@ -34,7 +34,7 @@
 //------------------------------------------------
 // CacheFileStat class methods
 //------------------------------------------------
-std::string CacheFileStat::GetCacheFileStatTopDir()
+std::string CacheFileStat::GetCacheFileStatTopDir(bool hidden)
 {
     std::string top_path;
     if(!FdManager::IsCacheDir() || S3fsCred::GetBucket().empty()){
@@ -45,13 +45,17 @@ std::string CacheFileStat::GetCacheFileStatTopDir()
     top_path += FdManager::GetCacheDir();
     top_path += "/.";
     top_path += S3fsCred::GetBucket();
-    top_path += ".stat";
+    if(hidden){
+        top_path += ".stat_hidden";
+    }else{
+        top_path += ".stat";
+    }
     return top_path;
 }
 
-int CacheFileStat::MakeCacheFileStatPath(const char* path, std::string& sfile_path, bool is_create_dir)
+int CacheFileStat::MakeCacheFileStatPath(const char* path, std::string& sfile_path, bool is_create_dir, bool hidden)
 {
-    std::string top_path = CacheFileStat::GetCacheFileStatTopDir();
+    std::string top_path = CacheFileStat::GetCacheFileStatTopDir(hidden);
     if(top_path.empty()){
         S3FS_PRN_ERR("The path to cache top dir is empty.");
         return -EIO;
@@ -83,7 +87,7 @@ bool CacheFileStat::CheckCacheFileStatTopDir()
     return check_exist_dir_permission(top_path.c_str());
 }
 
-int CacheFileStat::DeleteCacheFileStat(const char* path)
+int CacheFileStat::DeleteCacheFileStat(const char* path, bool hidden)
 {
     if(!path || '\0' == path[0]){
         return -EINVAL;
@@ -91,7 +95,7 @@ int CacheFileStat::DeleteCacheFileStat(const char* path)
     // stat path
     std::string sfile_path;
     int result;
-    if(0 != (result = CacheFileStat::MakeCacheFileStatPath(path, sfile_path, false))){
+    if(0 != (result = CacheFileStat::MakeCacheFileStatPath(path, sfile_path, false, hidden))){
         S3FS_PRN_ERR("failed to create cache stat file path(%s)", path);
         return result;
     }
@@ -121,7 +125,7 @@ bool CacheFileStat::DeleteCacheFileStatDirectory()
     return delete_files_in_dir(top_path.c_str(), true);
 }
 
-bool CacheFileStat::RenameCacheFileStat(const char* oldpath, const char* newpath)
+bool CacheFileStat::RenameCacheFileStat(const char* oldpath, bool old_hidden, const char* newpath, bool new_hidden)
 {
     if(!oldpath || '\0' == oldpath[0] || !newpath || '\0' == newpath[0]){
         return false;
@@ -130,7 +134,7 @@ bool CacheFileStat::RenameCacheFileStat(const char* oldpath, const char* newpath
     // stat path
     std::string old_filestat;
     std::string new_filestat;
-    if(0 != CacheFileStat::MakeCacheFileStatPath(oldpath, old_filestat, false) || 0 != CacheFileStat::MakeCacheFileStatPath(newpath, new_filestat, false)){
+    if(0 != CacheFileStat::MakeCacheFileStatPath(oldpath, old_filestat, false, old_hidden) || 0 != CacheFileStat::MakeCacheFileStatPath(newpath, new_filestat, true, new_hidden)){
         return false;
     }
 
@@ -165,7 +169,7 @@ bool CacheFileStat::RenameCacheFileStat(const char* oldpath, const char* newpath
 //------------------------------------------------
 // CacheFileStat methods
 //------------------------------------------------
-CacheFileStat::CacheFileStat(const char* tpath) : fd(-1)
+CacheFileStat::CacheFileStat(const char* tpath, bool hidden_stat) : fd(-1), hidden(hidden_stat)
 {
     if(tpath && '\0' != tpath[0]){
         SetPath(tpath, true);
@@ -201,7 +205,7 @@ bool CacheFileStat::OverWriteFile(const std::string& strall) const
 {
     // make temporary file path(in same cache directory)
     std::string sfile_path;
-    if(0 != CacheFileStat::MakeCacheFileStatPath(path.c_str(), sfile_path, true)){
+    if(0 != CacheFileStat::MakeCacheFileStatPath(path.c_str(), sfile_path, true, hidden)){
         S3FS_PRN_ERR("failed to create cache stat file path(%s)", path.c_str());
         return false;
     }
@@ -243,7 +247,7 @@ bool CacheFileStat::RawOpen(bool readonly)
     }
     // stat path
     std::string sfile_path;
-    if(0 != CacheFileStat::MakeCacheFileStatPath(path.c_str(), sfile_path, true)){
+    if(0 != CacheFileStat::MakeCacheFileStatPath(path.c_str(), sfile_path, true, hidden)){
         S3FS_PRN_ERR("failed to create cache stat file path(%s)", path.c_str());
         return false;
     }

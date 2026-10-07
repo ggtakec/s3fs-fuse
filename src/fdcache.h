@@ -64,6 +64,12 @@ class FdManager
       bool RawCheckAllCache(FILE* fp, const char* cache_stat_top_dir, const char* sub_path, int& total_file_cnt, int& err_file_cnt, int& err_dir_cnt);
 
   public:
+      enum class cache_dir_type_t : uint8_t {
+          FILE = 0,
+          MIRROR,
+          HIDDEN
+      };
+
       FdManager() = default;
       ~FdManager();
       FdManager(const FdManager&) = delete;
@@ -79,15 +85,16 @@ class FdManager
       }
 
       static bool DeleteCacheDirectory();
-      static int DeleteCacheFile(const char* path);
+      static int DeleteCacheFile(const char* path, bool hidden);
       static bool SetCacheDir(const char* dir);
       static bool IsCacheDir() { return !FdManager::cache_dir.empty(); }
       static const char* GetCacheDir() { return FdManager::cache_dir.c_str(); }
       static bool SetCacheCheckOutput(const char* path);
       static const char* GetCacheCheckOutput() { return FdManager::check_cache_output.c_str(); }
-      static bool MakeCachePath(const char* path, std::string& cache_path, bool is_create_dir = true, bool is_mirror_path = false);
+      static bool MakeCachePath(const char* path, std::string& cache_path, bool is_create_dir = true, cache_dir_type_t dir_type = cache_dir_type_t::FILE);
       static bool CheckCacheTopDir();
       static bool MakeRandomTempPath(const char* path, std::string& tmppath);
+      static bool MakeHiddenTempPath(const char* path, std::string& tmppath);
       static bool SetCheckCacheDirExist(bool is_check);
       static bool CheckCacheDirExist();
       static bool HasOpenEntityFd(const char* path);

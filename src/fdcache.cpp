@@ -75,6 +75,13 @@
 //
 static constexpr char NOCACHE_PATH_PREFIX_FORM[] = " __S3FS_UNEXISTED_PATH_%lx__ / ";  // important space words for simply
 
+// [NOTE]
+// Including '\001'(^A) ensures there are no conflicts with
+// files in object storage. Object storage does not allow the
+// creation of object names containing control codes.
+//
+static constexpr char HIDDEN_PATH_PREFIX_FORM[]  = ".hidden_\001_%lx";                 // for hidden file
+
 //------------------------------------------------
 // FdManager class variable
 //------------------------------------------------
@@ -120,23 +127,21 @@ bool FdManager::DeleteCacheDirectory()
         return true;
     }
 
+    bool        result = true;
     std::string cache_path;
-    if(!FdManager::MakeCachePath(nullptr, cache_path, false)){
-        return false;
+    if(!FdManager::MakeCachePath(nullptr, cache_path, false, cache_dir_type_t::FILE) || !delete_files_in_dir(cache_path.c_str(), true)){
+        result = false;
     }
-    if(!delete_files_in_dir(cache_path.c_str(), true)){
-        return false;
+    if(!FdManager::MakeCachePath(nullptr, cache_path, false, cache_dir_type_t::MIRROR) || !delete_files_in_dir(cache_path.c_str(), true)){
+        result = false;
     }
-
-    std::string mirror_path = FdManager::cache_dir + "/." + S3fsCred::GetBucket() + ".mirror";
-    if(!delete_files_in_dir(mirror_path.c_str(), true)){
-        return false;
+    if(!FdManager::MakeCachePath(nullptr, cache_path, false, cache_dir_type_t::HIDDEN) || !delete_files_in_dir(cache_path.c_str(), true)){
+        result = false;
     }
-
-    return true;
+    return result;
 }
 
-int FdManager::DeleteCacheFile(const char* path)
+int FdManager::DeleteCacheFile(const char* path, bool hidden)
 {
     S3FS_PRN_INFO3("[path=%s]", SAFESTRPTR(path));
 
@@ -147,7 +152,7 @@ int FdManager::DeleteCacheFile(const char* path)
         return 0;
     }
     std::string cache_path;
-    if(!FdManager::MakeCachePath(path, cache_path, false)){
+    if(!FdManager::MakeCachePath(path, cache_path, false, (hidden ? cache_dir_type_t::HIDDEN : cache_dir_type_t::FILE))){
         return 0;
     }
     int result = 0;
@@ -159,7 +164,7 @@ int FdManager::DeleteCacheFile(const char* path)
         }
         return -errno;
     }
-    if(0 != (result = CacheFileStat::DeleteCacheFileStat(path))){
+    if(0 != (result = CacheFileStat::DeleteCacheFileStat(path, hidden))){
         if(-ENOENT == result){
             S3FS_PRN_DBG("failed to delete stat file(%s): errno=%d", path, result);
         }else{
@@ -169,7 +174,7 @@ int FdManager::DeleteCacheFile(const char* path)
     return result;
 }
 
-bool FdManager::MakeCachePath(const char* path, std::string& cache_path, bool is_create_dir, bool is_mirror_path)
+bool FdManager::MakeCachePath(const char* path, std::string& cache_path, bool is_create_dir, cache_dir_type_t dir_type)
 {
     if(FdManager::cache_dir.empty()){
         cache_path = "";
@@ -177,13 +182,17 @@ bool FdManager::MakeCachePath(const char* path, std::string& cache_path, bool is
     }
 
     std::string resolved_path(FdManager::cache_dir);
-    if(!is_mirror_path){
+    if(cache_dir_type_t::FILE == dir_type){
         resolved_path += "/";
         resolved_path += S3fsCred::GetBucket();
-    }else{
+    }else if(cache_dir_type_t::MIRROR == dir_type){
         resolved_path += "/.";
         resolved_path += S3fsCred::GetBucket();
         resolved_path += ".mirror";
+    }else{
+        resolved_path += "/.";
+        resolved_path += S3fsCred::GetBucket();
+        resolved_path += ".hidden";
     }
 
     if(is_create_dir){
@@ -219,6 +228,20 @@ bool FdManager::MakeRandomTempPath(const char* path, std::string& tmppath)
     szBuff[sizeof(szBuff) - 1] = '\0';                                      // for safety
     tmppath  = szBuff;
     tmppath += path ? path : "";
+    return true;
+}
+
+bool FdManager::MakeHiddenTempPath(const char* path, std::string& tmppath)
+{
+    if(!path || '\0' == path[0]){
+        return false;
+    }
+    char szBuff[64];
+    snprintf(szBuff, sizeof(szBuff), HIDDEN_PATH_PREFIX_FORM, random());
+    szBuff[sizeof(szBuff) - 1] = '\0';
+
+    tmppath  = SAFESTRPTR(path);
+    tmppath += szBuff;
     return true;
 }
 
@@ -537,7 +560,7 @@ FdEntity* FdManager::Open(int& fd, const char* path, const headers_t* pmeta, off
         // search a entity in all which opened the temporary file.
         //
         for(iter = fent.begin(); iter != fent.end(); ++iter){
-            if(iter->second && iter->second->IsOpen() && iter->second->GetPath() == path){
+            if(iter->second && !iter->second->IsHidden() && iter->second->IsOpen() && iter->second->GetPath() == path){
                 break;      // found opened fd in mapping
             }
         }
@@ -726,10 +749,42 @@ void FdManager::Rename(const std::string &from, const std::string &to)
         // search a entity in all which opened the temporary file.
         //
         for(iter = fent.begin(); iter != fent.end(); ++iter){
-            if(iter->second && iter->second->IsOpen() && iter->second->GetPath() == from){
+            if(iter->second && !iter->second->IsHidden() && iter->second->IsOpen() && iter->second->GetPath() == from){
                 break;              // found opened fd in mapping
             }
         }
+    }
+
+    // If a cache for the "to" file exists, change its status to hidden.
+    auto to_iter = fent.find(to);
+    if(fent.end() == to_iter){
+        // retry, search from all entities to find the entity with the same path.
+        for(to_iter = fent.begin(); to_iter != fent.end(); ++to_iter){
+            if(to_iter->second && !to_iter->second->IsHidden() && to_iter->second->GetROPath() == to){
+                break;
+            }
+        }
+    }
+    if(fent.end() != to_iter){
+        // hidden cache file path
+        std::string tmppath;
+        FdManager::MakeCachePath(nullptr, tmppath, true, cache_dir_type_t::HIDDEN);     // try to make hidden cache directory
+        if(!FdManager::MakeHiddenTempPath(to_iter->first.c_str(), tmppath)){
+            return;
+        }
+
+        // retrieve old fd entity from map
+        auto to_ent(std::move(to_iter->second));
+        fent.erase(to_iter);
+
+        // rename to hidden path and caches in fd entity
+        std::string fentmapkey;
+        if(!to_ent->RenamePath(tmppath, fentmapkey, true)){
+            return;
+        }
+
+        // set hidden fd entity to map
+        fent.insert_or_assign(fentmapkey, std::move(to_ent));
     }
 
     if(fent.end() != iter){
@@ -743,7 +798,7 @@ void FdManager::Rename(const std::string &from, const std::string &to)
 
         // rename path and caches in fd entity
         std::string fentmapkey;
-        if(!ent->RenamePath(to, fentmapkey)){
+        if(!ent->RenamePath(to, fentmapkey, false)){
             S3FS_PRN_ERR("Failed to rename FdEntity object for %s to %s", from.c_str(), to.c_str());
             return;
         }
@@ -898,7 +953,7 @@ void FdManager::CleanupCacheDirInternal(const std::string &path)
 
             if(auto iter = fent.find(next_path); fent.cend() == iter) {
                 S3FS_PRN_DBG("cleaned up: %s", next_path.c_str());
-                FdManager::DeleteCacheFile(next_path.c_str());
+                FdManager::DeleteCacheFile(next_path.c_str(), false);   // if hidden=true, it is deleted when the fdentity is deleted.
             }
             FdManager::fd_manager_lock.unlock();
         }
@@ -998,7 +1053,7 @@ bool FdManager::RawCheckAllCache(FILE* fp, const char* cache_stat_top_dir, const
             std::string cache_path;
             std::string object_file_path = sub_path;
             object_file_path       += pdirent->d_name;
-            if(!FdManager::MakeCachePath(object_file_path.c_str(), cache_path, false, false) || cache_path.empty()){
+            if(!FdManager::MakeCachePath(object_file_path.c_str(), cache_path, false) || cache_path.empty()){
                 ++err_file_cnt;
                 S3FS_PRN_CACHE(fp, CACHEDBG_FMT_FILE_PROB, object_file_path.c_str(), strOpenedWarn.c_str());
                 S3FS_PRN_CACHE(fp, CACHEDBG_FMT_CRIT_HEAD, "Could not make cache file path");
@@ -1044,7 +1099,7 @@ bool FdManager::RawCheckAllCache(FILE* fp, const char* cache_stat_top_dir, const
 
             // open cache stat file and load page info.
             PageList      pagelist;
-            CacheFileStat cfstat(object_file_path.c_str());
+            CacheFileStat cfstat(object_file_path.c_str());     // not hidden
             if(!cfstat.ReadOnlyOpen() || !pagelist.Deserialize(cfstat, cache_file_inode)){
                 ++err_file_cnt;
                 S3FS_PRN_CACHE(fp, CACHEDBG_FMT_FILE_PROB, object_file_path.c_str(), strOpenedWarn.c_str());

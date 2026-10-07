@@ -749,13 +749,18 @@ bool FdEntity::RenamePath(const std::string& newpath, std::string& fentmapkey, b
         }
         fentmapkey = newpath;
         cachepath  = newcachepath;
+        hidden.store(new_hidden);
 
     }else{
         // does not have cache path
         fentmapkey.clear();
-        FdManager::MakeRandomTempPath(newpath.c_str(), fentmapkey);
+        std::string tmppath;
+        FdManager::MakeCachePath(nullptr, tmppath, true, FdManager::cache_dir_type_t::HIDDEN);     // try to make hidden cache directory
+        if(!FdManager::MakeHiddenTempPath(newpath.c_str(), fentmapkey)){
+            return false;
+        }
+        hidden.store(true);
     }
-    hidden.store(new_hidden);
 
     // set new path
     path = newpath;
@@ -1063,8 +1068,12 @@ int FdEntity::NoCacheLoadAndPost(PseudoFdInfo* pseudo_obj, off_t start, off_t si
         mirrorpath.clear();
     }
 
-    // Change entity key in manager mapping
-    FdManager::get()->ChangeEntityToTempPath(get_shared_ptr(), path.c_str());
+    // Change the cache status to hidden
+    //
+    // But do not modify the key for `FdManager::fent` here.
+    // Doing so would require acquiring `fd_manager_lock`, which could lead to a deadlock.
+    //
+    hidden.store(true);
 
     // open temporary file
     int tmpfd;
